@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import invoices, dashboard, webhooks, clients
+from app.api.public import router as public_router
 from app.api.metrics import router as metrics_router
 from app.api.settings import router as settings_router
 from app.api.middleware import (
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Auto Invoice",
+    title="InvoiceFlow",
     version="1.0.0",
     description="An API for automating invoice generation and management.",
     lifespan=lifespan,
@@ -55,6 +56,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 
 app.include_router(invoices.router)
+app.include_router(public_router)
 app.include_router(dashboard.router)
 app.include_router(webhooks.router)
 app.include_router(clients.router)
@@ -65,9 +67,3 @@ app.include_router(settings_router)
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-
-@app.post("/admin/trigger-overdue-check")
-async def trigger_overdue_check():
-    await invoice_scheduler.mark_overdue_invoices()
-    return {"message": "Overdue check triggered"}
