@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios'
+import { supabase } from '@/lib/supabase'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -9,8 +10,9 @@ export const api = axios.create({
   },
 })
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token')
+api.interceptors.request.use(async (config) => {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -45,9 +47,9 @@ export function getErrorMessage(error: unknown): string {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token')
+      await supabase.auth.signOut()
       window.location.href = '/login'
     }
     return Promise.reject(error)

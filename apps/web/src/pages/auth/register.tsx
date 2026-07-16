@@ -28,7 +28,6 @@ export function RegisterPage() {
       if (authError) throw authError
 
       if (data.session) {
-        localStorage.setItem('auth_token', data.session.access_token)
         navigate('/dashboard')
       } else {
         navigate('/login')

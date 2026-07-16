@@ -26,12 +26,14 @@ interface SidebarProps {
   onCollapse?: (collapsed: boolean) => void
 }
 
+import { supabase } from '@/lib/supabase'
+
 export function Sidebar({ collapsed = false }: SidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
 
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token')
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     window.location.href = '/login'
   }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FileText, Mail, Lock, ArrowRight } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
@@ -21,7 +21,6 @@ export function LoginPage() {
     if (authError) throw authError
 
     if (data.session) {
-      localStorage.setItem('auth_token', data.session.access_token)
       navigate('/dashboard')
     }
   }
@@ -140,6 +139,13 @@ export function LoginPage() {
               )}
             </Button>
           </form>
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{' '}
+            <Link to="/register" className="text-primary hover:underline font-medium">
+              Sign up
+            </Link>
+          </p>
 
           <div className="mt-6 space-y-3 text-center text-xs text-muted-foreground">
             <Button
