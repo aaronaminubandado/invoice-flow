@@ -6,6 +6,9 @@ from typing import Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
+from app.core.config import settings
+from app.services.pdf import PDFService
+
 logger = logging.getLogger(__name__)
 
 
@@ -224,6 +227,7 @@ class EmailService:
                             "business_email": business_info.business_email,
                             "phone": business_info.phone,
                             "address": business_info.address,
+                            "currency": business_info.currency,
                         }
 
                     try:
@@ -393,6 +397,7 @@ class EmailService:
                             "business_email": business_info.business_email,
                             "phone": business_info.phone,
                             "address": business_info.address,
+                            "currency": business_info.currency,
                         }
 
                     try:
@@ -558,6 +563,59 @@ class EmailService:
         return ""
 
     @staticmethod
+    def _currency_symbol(business_info: Optional[dict]) -> str:
+        code = (business_info or {}).get("currency", "USD")
+        return PDFService.currency_symbol(code)
+
+    @staticmethod
+    def _public_link_html(share_token: Optional[str]) -> str:
+        if not share_token or not settings.PUBLIC_APP_URL:
+            return ""
+        url = f"{settings.PUBLIC_APP_URL.rstrip('/')}/i/{share_token}"
+        return f"""
+            <p style="margin:24px 0;">
+                <a href="{url}" style="display:inline-block;background:#635bff;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">
+                    View invoice online
+                </a>
+            </p>
+        """
+
+    @staticmethod
+    def _public_link_text(share_token: Optional[str]) -> str:
+        if not share_token or not settings.PUBLIC_APP_URL:
+            return ""
+        url = f"{settings.PUBLIC_APP_URL.rstrip('/')}/i/{share_token}"
+        return f"\nView online: {url}\n"
+
+    @staticmethod
+    def _items_html(items: list, symbol: str) -> str:
+        if not items:
+            return ""
+        rows = ""
+        for item in items:
+            rows += f"""
+                <tr>
+                    <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{item.get('description','')}</td>
+                    <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">{item.get('quantity','')}</td>
+                    <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">{symbol}{item.get('unit_price','')}</td>
+                    <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">{symbol}{item.get('line_total','')}</td>
+                </tr>
+            """
+        return f"""
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+                <thead>
+                    <tr style="background:#f3f4f6;">
+                        <th style="padding:8px;text-align:left;">Description</th>
+                        <th style="padding:8px;text-align:right;">Qty</th>
+                        <th style="padding:8px;text-align:right;">Unit</th>
+                        <th style="padding:8px;text-align:right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>{rows}</tbody>
+            </table>
+        """
+
+    @staticmethod
     def _build_invoice_html(
         invoice_data: dict, business_info: Optional[dict] = None
     ) -> str:
@@ -565,17 +623,23 @@ class EmailService:
         description = invoice_data.get("description", "")
         due_date = invoice_data.get("due_date", "N/A")
         invoice_number = invoice_data.get("invoice_number", "N/A")
+        client_name = invoice_data.get("client_name", "Customer")
+        items = invoice_data.get("items") or []
+        symbol = EmailService._currency_symbol(business_info)
 
         header = EmailService._build_business_header_html(business_info)
         footer = EmailService._build_business_footer_html(business_info)
+        items_block = EmailService._items_html(items, symbol)
+        link_block = EmailService._public_link_html(invoice_data.get("share_token"))
 
         return f"""
         <html>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
             {header}
             <h2 style="color:#111827;margin-bottom:16px;">Invoice #{invoice_number}</h2>
-            <p>Dear Customer,</p>
-            <p>Please find attached your invoice for <strong>${amount}</strong>.</p>
+            <p>Dear {client_name},</p>
+            <p>Please find attached your invoice for <strong>{symbol}{amount}</strong>.</p>
+            {items_block}
             <table style="width:100%;border-collapse:collapse;margin:16px 0;">
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;width:140px;"><strong>Due Date:</strong></td>
@@ -587,9 +651,10 @@ class EmailService:
                 </tr>
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;"><strong>Amount Due:</strong></td>
-                    <td style="padding:8px 0;font-size:18px;font-weight:bold;">${amount}</td>
+                    <td style="padding:8px 0;font-size:18px;font-weight:bold;">{symbol}{amount}</td>
                 </tr>
             </table>
+            {link_block}
             <p>Please remit payment at your earliest convenience.</p>
             <p>Thank you for your business!</p>
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
@@ -606,19 +671,22 @@ class EmailService:
         description = invoice_data.get("description", "")
         due_date = invoice_data.get("due_date", "N/A")
         invoice_number = invoice_data.get("invoice_number", "N/A")
+        client_name = invoice_data.get("client_name", "Customer")
+        symbol = EmailService._currency_symbol(business_info)
 
         header = EmailService._build_business_header_text(business_info)
+        link = EmailService._public_link_text(invoice_data.get("share_token"))
 
         return f"""{header}Invoice #{invoice_number}
 
-Dear Customer,
+Dear {client_name},
 
-Please find attached your invoice for ${amount}.
+Please find attached your invoice for {symbol}{amount}.
 
 Due Date: {due_date}
 Description: {description}
-Amount Due: ${amount}
-
+Amount Due: {symbol}{amount}
+{link}
 Please remit payment at your earliest convenience.
 
 Thank you for your business!
@@ -633,20 +701,24 @@ Thank you for your business!
         payment_date = receipt_data.get("payment_date", "N/A")
         paid_amount = receipt_data.get("paid_amount")
         payment_method = receipt_data.get("payment_method", "N/A")
+        client_name = receipt_data.get("client_name", "Customer")
+        symbol = EmailService._currency_symbol(business_info)
 
         outstanding = ""
         if paid_amount and float(paid_amount) > float(amount):
-            outstanding = f'<tr><td style="padding:8px 0;color:#6b7280;"><strong>Overpayment:</strong></td><td style="padding:8px 0;">${float(paid_amount) - float(amount):.2f}</td></tr>'
+            outstanding = f'<tr><td style="padding:8px 0;color:#6b7280;"><strong>Overpayment:</strong></td><td style="padding:8px 0;">{symbol}{float(paid_amount) - float(amount):.2f}</td></tr>'
 
         header = EmailService._build_business_header_html(business_info)
         footer = EmailService._build_business_footer_html(business_info)
+        link_block = EmailService._public_link_html(receipt_data.get("share_token"))
+        paid_display = paid_amount if paid_amount else amount
 
         return f"""
         <html>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
             {header}
             <h2 style="color:#111827;margin-bottom:16px;">Payment Receipt</h2>
-            <p>Dear Customer,</p>
+            <p>Dear {client_name},</p>
             <p>We have received your payment. Thank you!</p>
             <table style="width:100%;border-collapse:collapse;margin:16px 0;">
                 <tr>
@@ -655,11 +727,11 @@ Thank you for your business!
                 </tr>
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;"><strong>Invoice Amount:</strong></td>
-                    <td style="padding:8px 0;">${amount}</td>
+                    <td style="padding:8px 0;">{symbol}{amount}</td>
                 </tr>
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;"><strong>Amount Paid:</strong></td>
-                    <td style="padding:8px 0;font-size:18px;font-weight:bold;">${paid_amount if paid_amount else amount}</td>
+                    <td style="padding:8px 0;font-size:18px;font-weight:bold;">{symbol}{paid_display}</td>
                 </tr>
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;"><strong>Payment Date:</strong></td>
@@ -671,6 +743,7 @@ Thank you for your business!
                 </tr>
                 {outstanding}
             </table>
+            {link_block}
             <p>Thank you for your payment!</p>
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
             {footer}
@@ -687,27 +760,31 @@ Thank you for your business!
         payment_date = receipt_data.get("payment_date", "N/A")
         paid_amount = receipt_data.get("paid_amount")
         payment_method = receipt_data.get("payment_method", "N/A")
+        client_name = receipt_data.get("client_name", "Customer")
+        symbol = EmailService._currency_symbol(business_info)
 
         outstanding = ""
         if paid_amount and float(paid_amount) > float(amount):
             outstanding = (
-                f"\nOverpayment: ${float(paid_amount) - float(amount):.2f}"
+                f"\nOverpayment: {symbol}{float(paid_amount) - float(amount):.2f}"
             )
 
         header = EmailService._build_business_header_text(business_info)
+        link = EmailService._public_link_text(receipt_data.get("share_token"))
+        paid_display = paid_amount if paid_amount else amount
 
         return f"""{header}Payment Receipt
 
-Dear Customer,
+Dear {client_name},
 
 We have received your payment. Thank you!
 
 Invoice #: {invoice_number}
-Invoice Amount: ${amount}
-Amount Paid: ${paid_amount if paid_amount else amount}
+Invoice Amount: {symbol}{amount}
+Amount Paid: {symbol}{paid_display}
 Payment Date: {payment_date}
 Payment Method: {payment_method}{outstanding}
-
+{link}
 Thank you for your payment!
 """
 
