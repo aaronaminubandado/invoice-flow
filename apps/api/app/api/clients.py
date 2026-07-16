@@ -24,7 +24,7 @@ async def export_clients(
     """Export all clients as CSV, Excel, or PDF."""
     result = await db.execute(
         text("""
-            SELECT id, name, email, created_at
+            SELECT id, name, email, phone, address, created_at
             FROM clients
             WHERE user_id = :uid
             ORDER BY created_at DESC
@@ -108,11 +108,17 @@ async def create_client(
     """Create a new client owned by the authenticated user."""
     result = await db.execute(
         text("""
-            INSERT INTO clients (user_id, name, email)
-            VALUES (:uid, :name, :email)
-            RETURNING id, name, email, created_at
+            INSERT INTO clients (user_id, name, email, phone, address)
+            VALUES (:uid, :name, :email, :phone, :address)
+            RETURNING id, name, email, phone, address, created_at
         """),
-        {"uid": user_id, "name": payload.name, "email": payload.email},
+        {
+            "uid": user_id,
+            "name": payload.name,
+            "email": payload.email,
+            "phone": payload.phone,
+            "address": payload.address,
+        },
     )
 
     row = result.first()
@@ -131,7 +137,7 @@ async def list_clients(
     """List all clients belonging to the authenticated user."""
     result = await db.execute(
         text("""
-            SELECT id, name, email, created_at
+            SELECT id, name, email, phone, address, created_at
             FROM clients
             WHERE user_id = :uid
             ORDER BY created_at DESC
@@ -175,13 +181,17 @@ async def update_client(
         text("""
             UPDATE clients
             SET name = COALESCE(:name, name),
-                email = COALESCE(:email, email)
+                email = COALESCE(:email, email),
+                phone = COALESCE(:phone, phone),
+                address = COALESCE(:address, address)
             WHERE id = :cid AND user_id = :uid
-            RETURNING id, name, email, created_at
+            RETURNING id, name, email, phone, address, created_at
         """),
         {
             "name": payload.name,
             "email": payload.email,
+            "phone": payload.phone,
+            "address": payload.address,
             "cid": client_id,
             "uid": user_id,
         },
