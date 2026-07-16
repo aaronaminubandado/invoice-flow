@@ -1,7 +1,7 @@
 import io
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Sequence
 from uuid import UUID
 from dataclasses import dataclass
 
@@ -24,6 +24,11 @@ class BusinessInfo:
 
 class PDFService:
     @staticmethod
+    def currency_symbol(currency: str = "USD") -> str:
+        mapping = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}
+        return mapping.get(currency, currency + " ")
+
+    @staticmethod
     def generate_invoice_pdf(
         invoice_id: str,
         invoice_number: Optional[str],
@@ -35,6 +40,8 @@ class PDFService:
         client_email: str,
         created_at: date,
         business_info: Optional[BusinessInfo] = None,
+        items: Sequence | None = None,
+        client_address: Optional[str] = None,
     ) -> bytes:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch)
@@ -59,13 +66,9 @@ class PDFService:
         elements.append(Paragraph("INVOICE", title_style))
         elements.append(Spacer(1, 20))
 
-        currency_symbol = business_info.currency if business_info else "USD"
-        if currency_symbol == "USD":
-            currency_symbol = "$"
-        elif currency_symbol == "EUR":
-            currency_symbol = "€"
-        elif currency_symbol == "GBP":
-            currency_symbol = "£"
+        currency_symbol = PDFService.currency_symbol(
+            business_info.currency if business_info else "USD"
+        )
 
         info_data = [
             ["Invoice ID:", str(invoice_id)],
@@ -92,21 +95,32 @@ class PDFService:
         elements.append(Paragraph("Bill To:", styles["Heading3"]))
         elements.append(Paragraph(client_name, styles["Normal"]))
         elements.append(Paragraph(client_email, styles["Normal"]))
+        if client_address:
+            elements.append(Paragraph(client_address, styles["Normal"]))
         elements.append(Spacer(1, 30))
 
-        currency_symbol = "$"
-        if business_info:
-            if business_info.currency == "EUR":
-                currency_symbol = "€"
-            elif business_info.currency == "GBP":
-                currency_symbol = "£"
-            elif business_info.currency == "JPY":
-                currency_symbol = "¥"
+        if items:
+            items_data = [["Description", "Qty", "Unit Price", "Line Total"]]
+            for item in items:
+                desc = item.description if hasattr(item, "description") else item["description"]
+                qty = item.quantity if hasattr(item, "quantity") else item["quantity"]
+                unit = item.unit_price if hasattr(item, "unit_price") else item["unit_price"]
+                line = item.line_total if hasattr(item, "line_total") else item["line_total"]
+                items_data.append(
+                    [
+                        desc,
+                        str(qty),
+                        f"{currency_symbol}{Decimal(str(unit)):,.2f}",
+                        f"{currency_symbol}{Decimal(str(line)):,.2f}",
+                    ]
+                )
+            col_widths = [2.5 * inch, 0.7 * inch, 1.2 * inch, 1.2 * inch]
+        else:
+            items_data = [["Description", "Amount"]]
+            items_data.append([description or "Invoice", f"{currency_symbol}{amount:,.2f}"])
+            col_widths = [4 * inch, 2 * inch]
 
-        items_data = [["Description", "Amount"]]
-        items_data.append([description or "Invoice", f"{currency_symbol}{amount:,.2f}"])
-
-        items_table = Table(items_data, colWidths=[4 * inch, 2 * inch])
+        items_table = Table(items_data, colWidths=col_widths)
         items_table.setStyle(
             TableStyle(
                 [
