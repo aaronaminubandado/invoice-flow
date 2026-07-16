@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+apps/api/venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Environment
+.env
+.env.local
+*.env
+!.env.example
+
+# Build
+apps/web/dist/
+
+# IDE / OS
+.cursor/
+.agents/
+.DS_Store
+*.swp
+
+# Legacy standalone repos (superseded by apps/)
+auto-invoice/
+invoice-frontend/
+
+# Misc
+skills-lock.json

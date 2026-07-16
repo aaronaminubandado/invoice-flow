@@ -1,0 +1,14 @@
+{
+  "name": "invoiceflow",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/api-types"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w apps/web",
+    "build:web": "npm run build -w apps/web",
+    "generate:api-types": "npm run generate -w packages/api-types",
+    "check:api-types": "npm run check -w packages/api-types"
+  }
+}
