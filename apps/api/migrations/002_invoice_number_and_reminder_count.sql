@@ -23,5 +23,12 @@ CREATE TABLE IF NOT EXISTS invoice_number_sequence (
 -- Create index for sequence lookups
 CREATE INDEX IF NOT EXISTS idx_invoice_number_sequence_user ON invoice_number_sequence(user_id);
 
--- Add unique constraint on invoice_number at table level (backup to sequence)
-ALTER TABLE invoices ADD CONSTRAINT unique_invoice_number UNIQUE (invoice_number);
+-- Add unique constraint on invoice_number at table level (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_invoice_number'
+    ) THEN
+        ALTER TABLE invoices ADD CONSTRAINT unique_invoice_number UNIQUE (invoice_number);
+    END IF;
+END $$;
