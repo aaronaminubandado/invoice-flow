@@ -180,9 +180,9 @@ export function DashboardPage() {
                               {monthLabel}
                             </p>
                             <div className="space-y-1">
-                              {payload.map((entry) => (
+                              {payload.map((entry, index) => (
                                 <div
-                                  key={entry.dataKey}
+                                  key={`entry-${index}`}
                                   className="flex items-center justify-between gap-4 text-sm"
                                 >
                                   <span className="text-muted-foreground">

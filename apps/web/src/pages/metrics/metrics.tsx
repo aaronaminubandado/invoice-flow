@@ -217,9 +217,9 @@ export function MetricsPage() {
                         return (
                           <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-lg">
                             <p className="text-sm font-medium mb-1.5">{label}</p>
-                            {payload.map((entry) => (
+                            {payload.map((entry, index) => (
                               <div
-                                key={entry.dataKey}
+                                key={`entry-${index}`}
                                 className="flex items-center justify-between gap-4 text-sm"
                               >
                                 <span className="text-muted-foreground">
