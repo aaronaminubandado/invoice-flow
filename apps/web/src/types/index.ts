@@ -1,6 +1,6 @@
 export interface Client {
   id: string
-  user_id: string
+  user_id?: string
   name: string
   email: string
   phone?: string
@@ -8,17 +8,29 @@ export interface Client {
   created_at: string
 }
 
+export interface InvoiceItem {
+  id?: string
+  position?: number
+  description: string
+  quantity: number | string
+  unit_price: number | string
+  line_total?: number | string
+}
+
 export interface Invoice {
   id: string
   user_id: string
   client_id: string
-  client?: Client
+  client_name?: string
+  client_email?: string
   amount: string
   description?: string
   due_date: string
   status: 'draft' | 'sent' | 'overdue' | 'paid' | 'partial' | 'cancelled' | 'void'
   created_at: string
   invoice_number?: string
+  share_token?: string
+  items?: InvoiceItem[]
 }
 
 export interface Payment {
@@ -31,7 +43,10 @@ export interface Payment {
   created_at: string
 }
 
-export interface InvoiceWithPayments extends Invoice {
+export interface InvoiceWithPayments {
+  id: string
+  amount: string
+  status: string
   paid_amount?: string
   payments?: Payment[]
 }
@@ -56,11 +71,18 @@ export interface CreateClientInput {
   address?: string
 }
 
+export interface CreateInvoiceItemInput {
+  description: string
+  quantity: number
+  unit_price: number
+}
+
 export interface CreateInvoiceInput {
   client_id: string
-  amount: number
   due_date: string
   description?: string
+  amount?: number
+  items?: CreateInvoiceItemInput[]
 }
 
 export interface CreatePaymentInput {
@@ -69,13 +91,4 @@ export interface CreatePaymentInput {
   payment_date?: string
   reference?: string
   notes?: string
-}
-
-export interface InvoiceStatusHistory {
-  id: string
-  invoice_id: string
-  from_status: string | null
-  to_status: string
-  changed_at: string
-  reason?: string
 }

@@ -1,10 +1,10 @@
 import { api } from '@/lib/axios'
-import { 
-  Invoice, 
-  InvoiceWithPayments, 
-  CreateInvoiceInput, 
+import {
+  Invoice,
+  CreateInvoiceInput,
   CreatePaymentInput,
-  Payment 
+  Payment,
+  InvoiceWithPayments,
 } from '@/types'
 
 export type ExportFormat = 'csv' | 'xlsx' | 'pdf'
@@ -17,11 +17,6 @@ export const invoicesApi = {
 
   get: async (id: string) => {
     const { data } = await api.get<Invoice>(`/invoices/${id}`)
-    return data
-  },
-
-  getWithPayments: async (id: string) => {
-    const { data } = await api.get<InvoiceWithPayments>(`/invoices/${id}`)
     return data
   },
 
@@ -40,7 +35,9 @@ export const invoicesApi = {
   },
 
   cancel: async (id: string) => {
-    const { data } = await api.post<{ message: string; status: string }>(`/invoices/${id}/cancel`)
+    const { data } = await api.post<{ message: string; status: string }>(
+      `/invoices/${id}/cancel`
+    )
     return data
   },
 
@@ -55,7 +52,10 @@ export const invoicesApi = {
   },
 
   addPayment: async (id: string, input: CreatePaymentInput) => {
-    const { data } = await api.post<InvoiceWithPayments>(`/invoices/${id}/payments`, input)
+    const { data } = await api.post<InvoiceWithPayments>(
+      `/invoices/${id}/payments`,
+      input
+    )
     return data
   },
 
@@ -72,9 +72,10 @@ export const invoicesApi = {
   },
 
   downloadReceipt: async (invoiceId: string, paymentId: string) => {
-    const response = await api.get(`/invoices/${invoiceId}/payments/${paymentId}/receipt`, {
-      responseType: 'blob',
-    })
+    const response = await api.get(
+      `/invoices/${invoiceId}/payments/${paymentId}/receipt`,
+      { responseType: 'blob' }
+    )
     return response.data
   },
 

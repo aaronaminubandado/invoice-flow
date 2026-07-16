@@ -11,6 +11,7 @@ import {
   Download,
   Check,
   Send,
+  Copy,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import {
@@ -28,9 +29,17 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/ui/toast'
 import { getErrorMessage } from '@/lib/axios'
+import { formatCurrency } from '@/lib/utils'
 import { invoicesApi, clientsApi } from '@/services'
 import type { ExportFormat } from '@/services/invoices'
-import { Invoice, Client, CreateInvoiceInput, CreatePaymentInput } from '@/types'
+import {
+  Invoice,
+  Client,
+  CreateInvoiceInput,
+  CreatePaymentInput,
+  CreateInvoiceItemInput,
+  Payment,
+} from '@/types'
 
 const statusOptions = [
   { value: 'all', label: 'All Status' },
@@ -42,13 +51,6 @@ const statusOptions = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
-const formatCurrency = (value: string | number) => {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(num)
-}
 
 const FILE_EXTENSIONS: Record<ExportFormat, string> = {
   csv: '.csv',
@@ -141,7 +143,8 @@ export function InvoicesPage() {
     const matchesSearch =
       !search ||
       invoice.description?.toLowerCase().includes(search.toLowerCase()) ||
-      invoice.invoice_number?.toLowerCase().includes(search.toLowerCase())
+      invoice.invoice_number?.toLowerCase().includes(search.toLowerCase()) ||
+      invoice.client_name?.toLowerCase().includes(search.toLowerCase())
     const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter
     return matchesSearch && matchesStatus
   })
@@ -284,6 +287,10 @@ export function InvoicesPage() {
                       </div>
                     </div>
 
+                    <p className="text-sm font-medium truncate mb-1">
+                      {invoice.client_name ?? 'Unknown client'}
+                    </p>
+
                     <div className="flex items-baseline justify-between mb-1.5">
                       <span className="text-xl font-bold font-mono tabular-nums">
                         {formatCurrency(invoice.amount)}
@@ -344,7 +351,7 @@ export function InvoicesPage() {
       <InvoiceDetailsDrawer
         open={!!detailsInvoice}
         onClose={() => setDetailsInvoice(null)}
-        invoice={detailsInvoice}
+        invoiceId={detailsInvoice?.id ?? null}
         onResend={(id: string) => resendMutation.mutate(id)}
       />
 
@@ -389,19 +396,36 @@ function CreateInvoiceModal({
   onSubmit: (data: CreateInvoiceInput) => void
   loading: boolean
 }) {
-  const [formData, setFormData] = useState<CreateInvoiceInput>({
-    client_id: '',
-    amount: 0,
-    due_date: '',
+  const emptyItem = (): CreateInvoiceItemInput => ({
     description: '',
+    quantity: 1,
+    unit_price: 0,
   })
+
+  const [clientId, setClientId] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [description, setDescription] = useState('')
+  const [items, setItems] = useState<CreateInvoiceItemInput[]>([emptyItem()])
+
+  const lineTotal = (item: CreateInvoiceItemInput) =>
+    (Number(item.quantity) || 0) * (Number(item.unit_price) || 0)
+
+  const runningTotal = items.reduce((sum, item) => sum + lineTotal(item), 0)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit(formData)
+    onSubmit({
+      client_id: clientId,
+      due_date: dueDate,
+      description: description || undefined,
+      items: items.filter((i) => i.description.trim()),
+    })
   }
 
-  const isValid = formData.client_id && formData.due_date && formData.amount > 0
+  const isValid =
+    clientId &&
+    dueDate &&
+    items.some((i) => i.description.trim() && lineTotal(i) > 0)
 
   return (
     <Modal open={open} onClose={onClose} title="Create Invoice">
@@ -410,48 +434,111 @@ function CreateInvoiceModal({
           <label className="text-sm font-medium">Client</label>
           <Select
             options={clients.map((c) => ({ value: c.id, label: c.name }))}
-            value={formData.client_id}
-            onChange={(e) =>
-              setFormData({ ...formData, client_id: e.target.value })
-            }
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
             placeholder="Select a client"
           />
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Amount</label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            value={formData.amount || ''}
-            onChange={(e) =>
-              setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })
-            }
-            placeholder="0.00"
-            className="font-mono"
-          />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Line items</label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setItems([...items, emptyItem()])}
+            >
+              Add row
+            </Button>
+          </div>
+          {items.map((item, index) => (
+            <div key={index} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-5">
+                <Input
+                  placeholder="Description"
+                  value={item.description}
+                  onChange={(e) => {
+                    const next = [...items]
+                    next[index] = { ...item, description: e.target.value }
+                    setItems(next)
+                  }}
+                />
+              </div>
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Qty"
+                  className="font-mono"
+                  value={item.quantity || ''}
+                  onChange={(e) => {
+                    const next = [...items]
+                    next[index] = {
+                      ...item,
+                      quantity: parseFloat(e.target.value) || 0,
+                    }
+                    setItems(next)
+                  }}
+                />
+              </div>
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Price"
+                  className="font-mono"
+                  value={item.unit_price || ''}
+                  onChange={(e) => {
+                    const next = [...items]
+                    next[index] = {
+                      ...item,
+                      unit_price: parseFloat(e.target.value) || 0,
+                    }
+                    setItems(next)
+                  }}
+                />
+              </div>
+              <div className="col-span-2 text-right text-sm font-mono py-2">
+                {formatCurrency(lineTotal(item))}
+              </div>
+              <div className="col-span-1">
+                {items.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setItems(items.filter((_, i) => i !== index))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+          <div className="flex justify-end pt-1">
+            <span className="text-sm text-muted-foreground mr-2">Total</span>
+            <span className="font-bold font-mono">{formatCurrency(runningTotal)}</span>
+          </div>
         </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Due Date</label>
           <Input
             type="date"
-            value={formData.due_date}
-            onChange={(e) =>
-              setFormData({ ...formData, due_date: e.target.value })
-            }
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
           />
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Description</label>
+          <label className="text-sm font-medium">Notes</label>
           <Input
-            value={formData.description || ''}
-            onChange={(e) =>
-              setFormData({ ...formData, description: e.target.value })
-            }
-            placeholder="Invoice description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional invoice notes"
           />
         </div>
 
@@ -459,11 +546,8 @@ function CreateInvoiceModal({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={loading || !isValid}
-          >
-            {loading ? 'Creating...' : 'Create Invoice'}
+          <Button type="submit" disabled={loading || !isValid}>
+            {loading ? 'Creating...' : 'Create & Send'}
           </Button>
         </div>
       </form>
@@ -565,15 +649,29 @@ function PaymentModal({
 function InvoiceDetailsDrawer({
   open,
   onClose,
-  invoice,
+  invoiceId,
   onResend,
 }: {
   open: boolean
   onClose: () => void
-  invoice: Invoice | null
+  invoiceId: string | null
   onResend: (id: string) => void
 }) {
-  if (!invoice) return null
+  const { success } = useToast()
+
+  const { data: invoice, isLoading } = useQuery({
+    queryKey: ['invoice', invoiceId],
+    queryFn: () => invoicesApi.get(invoiceId!),
+    enabled: open && Boolean(invoiceId),
+  })
+
+  const { data: payments } = useQuery({
+    queryKey: ['invoice-payments', invoiceId],
+    queryFn: () => invoicesApi.getPayments(invoiceId!),
+    enabled: open && Boolean(invoiceId),
+  })
+
+  if (!open || !invoiceId) return null
 
   return (
     <Modal
@@ -582,71 +680,158 @@ function InvoiceDetailsDrawer({
       title="Invoice Details"
       className="max-w-2xl"
     >
-      <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground mb-0.5">Invoice Number</p>
-            <p className="text-base font-semibold font-mono">
-              {invoice.invoice_number || `#${invoice.id.slice(0, 8)}`}
-            </p>
+      {isLoading || !invoice ? (
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      ) : (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">Invoice Number</p>
+              <p className="text-base font-semibold font-mono">
+                {invoice.invoice_number || `#${invoice.id.slice(0, 8)}`}
+              </p>
+              {invoice.client_name && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {invoice.client_name}
+                </p>
+              )}
+            </div>
+            <Badge variant={getStatusBadgeVariant(invoice.status)} className="text-xs">
+              {invoice.status}
+            </Badge>
           </div>
-          <Badge variant={getStatusBadgeVariant(invoice.status)} className="text-xs">
-            {invoice.status}
-          </Badge>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-4 rounded-lg bg-secondary border border-border">
-            <p className="text-xs text-muted-foreground mb-0.5">Amount</p>
-            <p className="text-xl font-bold font-mono tabular-nums">
-              {formatCurrency(invoice.amount)}
-            </p>
-          </div>
-          <div className="p-4 rounded-lg bg-secondary border border-border">
-            <p className="text-xs text-muted-foreground mb-0.5">Due Date</p>
-            <p className="text-lg font-semibold">
-              {invoice.due_date
-                ? format(new Date(invoice.due_date), 'MMM d, yyyy')
-                : 'N/A'}
-            </p>
-          </div>
-        </div>
+          {invoice.items && invoice.items.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left py-2">Description</th>
+                    <th className="text-right py-2">Qty</th>
+                    <th className="text-right py-2">Unit</th>
+                    <th className="text-right py-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.items.map((item, idx) => (
+                    <tr key={item.id ?? idx} className="border-b border-border/50">
+                      <td className="py-2">{item.description}</td>
+                      <td className="py-2 text-right font-mono">{item.quantity}</td>
+                      <td className="py-2 text-right font-mono">
+                        {formatCurrency(item.unit_price)}
+                      </td>
+                      <td className="py-2 text-right font-mono">
+                        {formatCurrency(item.line_total ?? 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        {invoice.description && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Description</p>
-            <p className="text-sm">{invoice.description}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 rounded-lg bg-secondary border border-border">
+              <p className="text-xs text-muted-foreground mb-0.5">Amount</p>
+              <p className="text-xl font-bold font-mono tabular-nums">
+                {formatCurrency(invoice.amount)}
+              </p>
+            </div>
+            <div className="p-4 rounded-lg bg-secondary border border-border">
+              <p className="text-xs text-muted-foreground mb-0.5">Due Date</p>
+              <p className="text-lg font-semibold">
+                {invoice.due_date
+                  ? format(new Date(invoice.due_date), 'MMM d, yyyy')
+                  : 'N/A'}
+              </p>
+            </div>
           </div>
-        )}
 
-        <div className="flex gap-2.5 pt-3 border-t border-border">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => {
-              invoicesApi.downloadPdf(invoice.id).then((blob) => {
-                downloadBlob(
-                  blob,
-                  `invoice_${invoice.invoice_number || invoice.id}.pdf`
-                )
-              })
-            }}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Download PDF
-          </Button>
-          {invoice.status === 'sent' && (
+          {invoice.description && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Notes</p>
+              <p className="text-sm">{invoice.description}</p>
+            </div>
+          )}
+
+          {payments && payments.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">Payments</p>
+              <div className="space-y-2">
+                {payments.map((payment: Payment) => (
+                  <div
+                    key={payment.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border text-sm"
+                  >
+                    <div>
+                      <p className="font-mono">{formatCurrency(payment.amount)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(payment.payment_date), 'MMM d, yyyy')} ·{' '}
+                        {payment.payment_method}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        invoicesApi
+                          .downloadReceipt(invoice.id, payment.id)
+                          .then((blob) => {
+                            downloadBlob(blob, `receipt_${payment.id}.pdf`)
+                          })
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2.5 pt-3 border-t border-border">
             <Button
               variant="outline"
-              className="flex-1"
-              onClick={() => onResend(invoice.id)}
+              className="flex-1 min-w-[140px]"
+              onClick={() => {
+                invoicesApi.downloadPdf(invoice.id).then((blob) => {
+                  downloadBlob(
+                    blob,
+                    `invoice_${invoice.invoice_number || invoice.id}.pdf`
+                  )
+                })
+              }}
             >
-              <Send className="h-4 w-4 mr-2" />
-              Resend Email
+              <Download className="h-4 w-4 mr-2" />
+              Download PDF
             </Button>
-          )}
+            {invoice.share_token && (
+              <Button
+                variant="outline"
+                className="flex-1 min-w-[140px]"
+                onClick={() => {
+                  const url = `${window.location.origin}/i/${invoice.share_token}`
+                  navigator.clipboard.writeText(url)
+                  success('Share link copied')
+                }}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy link
+              </Button>
+            )}
+            {invoice.status === 'sent' && (
+              <Button
+                variant="outline"
+                className="flex-1 min-w-[140px]"
+                onClick={() => onResend(invoice.id)}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Resend Email
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </Modal>
   )
 }
