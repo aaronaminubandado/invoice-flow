@@ -1,4 +1,5 @@
 import logging
+import secrets
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,10 +28,31 @@ from app.services.pdf import PDFService
 from app.services.invoice_number import InvoiceNumberService
 from app.services.business_settings import get_business_settings
 from app.services.export import generate_csv, generate_xlsx, generate_pdf_table
+from app.services.invoice_items import (
+    compute_invoice_total,
+    insert_invoice_items,
+    replace_invoice_items,
+    fetch_invoice_items,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
+
+INVOICE_SELECT = """
+    SELECT
+        i.id, i.user_id, i.client_id, i.amount, i.description,
+        i.due_date, i.status, i.created_at, i.invoice_number,
+        i.share_token, c.name AS client_name, c.email AS client_email
+    FROM invoices i
+    JOIN clients c ON i.client_id = c.id
+"""
+
+
+async def _build_invoice_out(db: AsyncSession, row) -> dict:
+    data = dict(row._mapping)
+    data["items"] = await fetch_invoice_items(db, data["id"])
+    return data
 
 
 EXPORT_HEADERS = [
@@ -145,27 +167,35 @@ async def create_invoice(
             db, user_id
         )
 
+        share_token = secrets.token_urlsafe(24)
+        if payload.items:
+            amount = compute_invoice_total(payload.items)
+        else:
+            amount = payload.amount
+
         result = await db.execute(
             text("""
                 INSERT INTO invoices (
                     user_id, client_id, amount, description,
                     due_date, status, invoice_number,
-                    reminder_count, email_status
+                    reminder_count, email_status, share_token
                 )
                 VALUES (
                     :uid, :cid, :amount, :description,
                     :due_date, 'sent', :invoice_number,
-                    0, 'pending'
+                    0, 'pending', :share_token
                 )
-                RETURNING id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+                RETURNING id, user_id, client_id, amount, description, due_date,
+                          status, created_at, invoice_number, share_token
             """),
             {
                 "uid": user_id,
                 "cid": payload.client_id,
-                "amount": payload.amount,
+                "amount": amount,
                 "description": payload.description,
                 "due_date": payload.due_date,
                 "invoice_number": invoice_number,
+                "share_token": share_token,
             },
         )
 
@@ -177,16 +207,36 @@ async def create_invoice(
                 detail="Failed to create invoice",
             )
 
-        await db.commit()
-
         invoice_data = dict(row._mapping)
 
+        if payload.items:
+            await insert_invoice_items(db, invoice_data["id"], payload.items)
+
+        await db.commit()
+
         client_result = await db.execute(
-            text("SELECT email FROM clients WHERE id = :client_id"),
+            text("SELECT email, name FROM clients WHERE id = :client_id"),
             {"client_id": payload.client_id},
         )
         client_row = client_result.first()
         client_email = client_row.email if client_row else None
+        client_name = client_row.name if client_row else "Customer"
+
+        items_payload = []
+        if payload.items:
+            for item in payload.items:
+                from app.services.invoice_items import compute_line_total
+
+                items_payload.append(
+                    {
+                        "description": item.description,
+                        "quantity": str(item.quantity),
+                        "unit_price": str(item.unit_price),
+                        "line_total": str(
+                            compute_line_total(item.quantity, item.unit_price)
+                        ),
+                    }
+                )
 
         if client_email:
             background_tasks.add_task(
@@ -194,14 +244,21 @@ async def create_invoice(
                 invoice_id=str(invoice_data["id"]),
                 to=client_email,
                 invoice_data={
-                    "amount": str(payload.amount),
+                    "amount": str(amount),
                     "description": payload.description or "",
                     "due_date": str(payload.due_date),
                     "invoice_number": invoice_number,
+                    "share_token": share_token,
+                    "client_name": client_name,
+                    "items": items_payload,
                 },
             )
 
-        return invoice_data
+        full = await db.execute(
+            text(f"{INVOICE_SELECT} WHERE i.id = :id"),
+            {"id": invoice_data["id"]},
+        )
+        return await _build_invoice_out(db, full.first())
 
     except HTTPException:
         await db.rollback()
@@ -221,15 +278,19 @@ async def list_invoices(
 ):
     """List all invoices belonging to the authenticated user."""
     result = await db.execute(
-        text("""
-            SELECT id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
-            FROM invoices
-            WHERE user_id = :uid
-            ORDER BY created_at DESC
+        text(f"""
+            {INVOICE_SELECT}
+            WHERE i.user_id = :uid
+            ORDER BY i.created_at DESC
         """),
         {"uid": user_id},
     )
-    return [dict(row._mapping) for row in result.fetchall()]
+    rows = []
+    for row in result.fetchall():
+        data = dict(row._mapping)
+        data["items"] = []
+        rows.append(data)
+    return rows
 
 
 @router.get("/{invoice_id}", response_model=InvoiceOut)
@@ -240,10 +301,9 @@ async def get_invoice(
 ):
     """Retrieve a specific invoice belonging to the authenticated user."""
     result = await db.execute(
-        text("""
-            SELECT id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
-            FROM invoices
-            WHERE id = :invoice_id AND user_id = :uid
+        text(f"""
+            {INVOICE_SELECT}
+            WHERE i.id = :invoice_id AND i.user_id = :uid
         """),
         {"invoice_id": invoice_id, "uid": user_id},
     )
@@ -251,7 +311,33 @@ async def get_invoice(
     row = result.first()
     if not row:
         raise HTTPException(404, "Invoice not found")
-    return dict(row._mapping)
+    return await _build_invoice_out(db, row)
+
+
+@router.get("/{invoice_id}/payments", response_model=list[PaymentOut])
+async def list_invoice_payments(
+    invoice_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List payments recorded for an invoice."""
+    check = await db.execute(
+        text("SELECT id FROM invoices WHERE id = :invoice_id AND user_id = :uid"),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+    if check.first() is None:
+        raise HTTPException(404, "Invoice not found")
+
+    result = await db.execute(
+        text("""
+            SELECT id, invoice_id, amount, payment_method, payment_date, reference, created_at
+            FROM payments
+            WHERE invoice_id = :invoice_id
+            ORDER BY created_at ASC
+        """),
+        {"invoice_id": invoice_id},
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
 
 
 @router.get("/{invoice_id}/email-status")
@@ -283,6 +369,37 @@ async def update_invoice(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a specific invoice belonging to the authenticated user."""
+    existing = await db.execute(
+        text("SELECT status FROM invoices WHERE id = :invoice_id AND user_id = :uid"),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+    existing_row = existing.first()
+    if not existing_row:
+        raise HTTPException(404, "Invoice not found")
+
+    current_status = dict(existing_row._mapping)["status"]
+    if current_status not in ("draft", "sent"):
+        payments_check = await db.execute(
+            text("SELECT 1 FROM payments WHERE invoice_id = :invoice_id LIMIT 1"),
+            {"invoice_id": invoice_id},
+        )
+        if payments_check.first() is not None or current_status in (
+            "paid",
+            "partial",
+            "cancelled",
+            "void",
+            "overdue",
+        ):
+            raise HTTPException(
+                409,
+                f"Cannot edit invoice with status '{current_status}'",
+            )
+
+    if payload.items:
+        amount = compute_invoice_total(payload.items)
+    else:
+        amount = payload.amount
+
     result = await db.execute(
         text("""
             UPDATE invoices
@@ -291,13 +408,13 @@ async def update_invoice(
                 description = :description,
                 due_date = :due_date
             WHERE id = :invoice_id AND user_id = :uid
-            RETURNING id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+            RETURNING id
         """),
         {
             "invoice_id": invoice_id,
             "uid": user_id,
             "client_id": payload.client_id,
-            "amount": payload.amount,
+            "amount": amount,
             "description": payload.description,
             "due_date": payload.due_date,
         },
@@ -307,8 +424,16 @@ async def update_invoice(
     if not row:
         raise HTTPException(404, "Invoice not found")
 
+    if payload.items:
+        await replace_invoice_items(db, invoice_id, payload.items)
+
     await db.commit()
-    return dict(row._mapping)
+
+    full = await db.execute(
+        text(f"{INVOICE_SELECT} WHERE i.id = :id"),
+        {"id": invoice_id},
+    )
+    return await _build_invoice_out(db, full.first())
 
 
 @router.post("/{invoice_id}/resend")
@@ -320,7 +445,8 @@ async def resend_invoice(
 ):
     result = await db.execute(
         text("""
-            SELECT i.id, i.invoice_number, i.amount, i.description, i.due_date, c.email
+            SELECT i.id, i.invoice_number, i.amount, i.description, i.due_date,
+                   i.share_token, c.email, c.name
             FROM invoices i
             JOIN clients c ON i.client_id = c.id
             WHERE i.id = :invoice_id AND i.user_id = :uid
@@ -333,6 +459,16 @@ async def resend_invoice(
         raise HTTPException(404, "Invoice not found")
 
     invoice_data = dict(row._mapping)
+    items = await fetch_invoice_items(db, invoice_id)
+    items_payload = [
+        {
+            "description": i.description,
+            "quantity": str(i.quantity),
+            "unit_price": str(i.unit_price),
+            "line_total": str(i.line_total),
+        }
+        for i in items
+    ]
 
     background_tasks.add_task(
         EmailService.send_invoice_email_with_tracking,
@@ -343,6 +479,9 @@ async def resend_invoice(
             "description": invoice_data["description"] or "",
             "due_date": str(invoice_data["due_date"]),
             "invoice_number": invoice_data["invoice_number"],
+            "share_token": invoice_data.get("share_token"),
+            "client_name": invoice_data.get("name", "Customer"),
+            "items": items_payload,
         },
     )
 
@@ -356,6 +495,28 @@ async def delete_invoice(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a specific invoice belonging to the authenticated user."""
+    check = await db.execute(
+        text("SELECT status FROM invoices WHERE id = :invoice_id AND user_id = :uid"),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+    row = check.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    current_status = dict(row._mapping)["status"]
+    payments = await db.execute(
+        text("SELECT 1 FROM payments WHERE invoice_id = :invoice_id LIMIT 1"),
+        {"invoice_id": invoice_id},
+    )
+    if payments.first() is not None:
+        raise HTTPException(409, "Cannot delete invoice with recorded payments")
+
+    if current_status not in ("draft", "cancelled"):
+        raise HTTPException(
+            409,
+            f"Cannot delete invoice with status '{current_status}'. Cancel it first.",
+        )
+
     result = await db.execute(
         text("DELETE FROM invoices WHERE id = :invoice_id AND user_id = :uid RETURNING id"),
         {"invoice_id": invoice_id, "uid": user_id},
@@ -545,7 +706,8 @@ async def create_payment(
         try:
             receipt_invoice_result = await db.execute(
                 text("""
-                    SELECT i.id, i.invoice_number, i.amount, c.email, c.name
+                    SELECT i.id, i.invoice_number, i.amount, i.share_token,
+                           c.email, c.name
                     FROM invoices i
                     JOIN clients c ON i.client_id = c.id
                     WHERE i.id = :invoice_id
@@ -564,6 +726,8 @@ async def create_payment(
                     "payment_date": str(payment_date),
                     "paid_amount": str(new_total_paid),
                     "payment_method": payload.payment_method,
+                    "share_token": receipt_invoice_data.get("share_token"),
+                    "client_name": receipt_invoice_data.get("name", "Customer"),
                 },
             )
         except Exception as e:
@@ -677,7 +841,8 @@ async def mark_invoice_paid(
     try:
         invoice_result = await db.execute(
             text("""
-                SELECT i.id, i.invoice_number, i.amount, c.email, c.name
+                SELECT i.id, i.invoice_number, i.amount, i.share_token,
+                       c.email, c.name
                 FROM invoices i
                 JOIN clients c ON i.client_id = c.id
                 WHERE i.id = :invoice_id
@@ -696,6 +861,8 @@ async def mark_invoice_paid(
                 "payment_date": str(datetime.utcnow().date()),
                 "paid_amount": str(invoice_amount),
                 "payment_method": "mark_paid",
+                "share_token": invoice_data.get("share_token"),
+                "client_name": invoice_data.get("name", "Customer"),
             },
         )
     except Exception as e:
@@ -739,18 +906,29 @@ async def get_invoice_pdf(
 
     data = dict(row._mapping)
     business_info = await get_business_settings(db, user_id)
+    items = await fetch_invoice_items(db, invoice_id)
+
+    client_row = await db.execute(
+        text("SELECT address FROM clients WHERE id = (SELECT client_id FROM invoices WHERE id = :id)"),
+        {"id": invoice_id},
+    )
+    client_address = None
+    if client_row.first():
+        client_address = dict(client_row.first()._mapping).get("address")
 
     pdf_bytes = PDFService.generate_invoice_pdf(
         invoice_id=str(data["id"]),
         invoice_number=data.get("invoice_number"),
         amount=Decimal(str(data["amount"])),
-        description=data.get("description"),
+        description=data.get("description") or "",
         due_date=data["due_date"],
         status=data["status"],
         client_name=data["client_name"],
         client_email=data["client_email"],
+        client_address=client_address,
         created_at=data.get("created_at"),
         business_info=business_info,
+        items=items,
     )
 
     filename = f"invoice_{data.get('invoice_number') or str(invoice_id)[:8]}.pdf"
