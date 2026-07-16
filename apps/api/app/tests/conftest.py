@@ -8,7 +8,14 @@ from app.core.config import settings
 from uuid import uuid4
 
 
-TEST_DATABASE_URL = settings.DATABASE_URL
+def _database_url() -> str:
+    url = settings.TEST_DATABASE_URL or settings.DATABASE_URL
+    if not url:
+        pytest.skip("DATABASE_URL or TEST_DATABASE_URL must be set")
+    return url
+
+
+TEST_DATABASE_URL = _database_url()
 
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestSessionLocal = async_sessionmaker(bind=test_engine, expire_on_commit=False)
@@ -26,6 +33,11 @@ async def db_session():
 @pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession):
     user_id = uuid4()
+    await db_session.execute(
+        text("INSERT INTO users (id) VALUES (:id) ON CONFLICT DO NOTHING"),
+        {"id": user_id},
+    )
+    await db_session.commit()
     return user_id
 
 
