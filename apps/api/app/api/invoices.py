@@ -1,0 +1,813 @@
+import logging
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, Query
+from fastapi.responses import Response
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from uuid import UUID
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+
+from app.deps import get_current_user
+from app.core.database import get_db
+from app.schemas.invoice import (
+    InvoiceCreate,
+    InvoiceOut,
+    PaymentCreate,
+    PaymentOut,
+    InvoiceWithPaymentsOut,
+)
+from app.services.email import EmailService
+from app.services.invoice_state import (
+    validate_transition,
+    is_terminal_status,
+    InvoiceStatus,
+)
+from app.services.pdf import PDFService
+from app.services.invoice_number import InvoiceNumberService
+from app.services.business_settings import get_business_settings
+from app.services.export import generate_csv, generate_xlsx, generate_pdf_table
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/invoices", tags=["Invoices"])
+
+
+EXPORT_HEADERS = [
+    "Invoice Number",
+    "Client Name",
+    "Client Email",
+    "Amount",
+    "Description",
+    "Due Date",
+    "Status",
+    "Created At",
+]
+
+
+@router.get("/export")
+async def export_invoices(
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    format: Optional[str] = Query("csv", regex="^(csv|xlsx|pdf)$"),
+):
+    """Export all invoices as CSV, Excel, or PDF."""
+    result = await db.execute(
+        text("""
+            SELECT
+                i.id,
+                i.invoice_number,
+                i.amount,
+                i.description,
+                i.due_date,
+                i.status,
+                i.created_at,
+                c.name as client_name,
+                c.email as client_email
+            FROM invoices i
+            JOIN clients c ON i.client_id = c.id
+            WHERE i.user_id = :uid
+            ORDER BY i.created_at DESC
+        """),
+        {"uid": user_id},
+    )
+
+    rows_raw = result.fetchall()
+
+    if not rows_raw:
+        if format == "csv":
+            return Response(
+                content="No invoices to export",
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=invoices.csv"},
+            )
+        raise HTTPException(404, "No invoices to export")
+
+    rows = []
+    for row in rows_raw:
+        data = dict(row._mapping)
+        rows.append([
+            data.get("invoice_number", ""),
+            data.get("client_name", ""),
+            data.get("client_email", ""),
+            str(data.get("amount", "")),
+            data.get("description", ""),
+            str(data.get("due_date", "")),
+            data.get("status", ""),
+            str(data.get("created_at", "")),
+        ])
+
+    if format == "xlsx":
+        content = generate_xlsx(EXPORT_HEADERS, rows, sheet_name="Invoices")
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=invoices.xlsx"},
+        )
+
+    if format == "pdf":
+        content = generate_pdf_table(EXPORT_HEADERS, rows, title="Invoices Export")
+        return Response(
+            content=content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=invoices.pdf"},
+        )
+
+    content = generate_csv(EXPORT_HEADERS, rows)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=invoices.csv"},
+    )
+
+
+@router.post("", response_model=InvoiceOut)
+async def create_invoice(
+    payload: InvoiceCreate,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new invoice for a client owned by the authenticated user."""
+    try:
+        client_check = await db.execute(
+            text("SELECT id FROM clients WHERE id = :cid AND user_id = :uid"),
+            {"cid": payload.client_id, "uid": user_id},
+        )
+
+        if client_check.first() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found",
+            )
+
+        invoice_number = await InvoiceNumberService.generate_invoice_number(
+            db, user_id
+        )
+
+        result = await db.execute(
+            text("""
+                INSERT INTO invoices (
+                    user_id, client_id, amount, description,
+                    due_date, status, invoice_number,
+                    reminder_count, email_status
+                )
+                VALUES (
+                    :uid, :cid, :amount, :description,
+                    :due_date, 'sent', :invoice_number,
+                    0, 'pending'
+                )
+                RETURNING id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+            """),
+            {
+                "uid": user_id,
+                "cid": payload.client_id,
+                "amount": payload.amount,
+                "description": payload.description,
+                "due_date": payload.due_date,
+                "invoice_number": invoice_number,
+            },
+        )
+
+        row = result.first()
+
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create invoice",
+            )
+
+        await db.commit()
+
+        invoice_data = dict(row._mapping)
+
+        client_result = await db.execute(
+            text("SELECT email FROM clients WHERE id = :client_id"),
+            {"client_id": payload.client_id},
+        )
+        client_row = client_result.first()
+        client_email = client_row.email if client_row else None
+
+        if client_email:
+            background_tasks.add_task(
+                EmailService.send_invoice_email_with_tracking,
+                invoice_id=str(invoice_data["id"]),
+                to=client_email,
+                invoice_data={
+                    "amount": str(payload.amount),
+                    "description": payload.description or "",
+                    "due_date": str(payload.due_date),
+                    "invoice_number": invoice_number,
+                },
+            )
+
+        return invoice_data
+
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create invoice: {str(e)}",
+        )
+
+
+@router.get("", response_model=list[InvoiceOut])
+async def list_invoices(
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all invoices belonging to the authenticated user."""
+    result = await db.execute(
+        text("""
+            SELECT id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+            FROM invoices
+            WHERE user_id = :uid
+            ORDER BY created_at DESC
+        """),
+        {"uid": user_id},
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
+@router.get("/{invoice_id}", response_model=InvoiceOut)
+async def get_invoice(
+    invoice_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve a specific invoice belonging to the authenticated user."""
+    result = await db.execute(
+        text("""
+            SELECT id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+            FROM invoices
+            WHERE id = :invoice_id AND user_id = :uid
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+    return dict(row._mapping)
+
+
+@router.get("/{invoice_id}/email-status")
+async def get_email_status(
+    invoice_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the email delivery status for an invoice"""
+    result = await db.execute(
+        text("""
+            SELECT id, email_status, last_email_error, last_email_sent_at, email_resend_id
+            FROM invoices
+            WHERE id = :invoice_id AND user_id = :uid
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+    return dict(row._mapping)
+
+
+@router.put("/{invoice_id}", response_model=InvoiceOut)
+async def update_invoice(
+    invoice_id: UUID,
+    payload: InvoiceCreate,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a specific invoice belonging to the authenticated user."""
+    result = await db.execute(
+        text("""
+            UPDATE invoices
+            SET client_id = :client_id,
+                amount = :amount,
+                description = :description,
+                due_date = :due_date
+            WHERE id = :invoice_id AND user_id = :uid
+            RETURNING id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+        """),
+        {
+            "invoice_id": invoice_id,
+            "uid": user_id,
+            "client_id": payload.client_id,
+            "amount": payload.amount,
+            "description": payload.description,
+            "due_date": payload.due_date,
+        },
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    await db.commit()
+    return dict(row._mapping)
+
+
+@router.post("/{invoice_id}/resend")
+async def resend_invoice(
+    invoice_id: UUID,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        text("""
+            SELECT i.id, i.invoice_number, i.amount, i.description, i.due_date, c.email
+            FROM invoices i
+            JOIN clients c ON i.client_id = c.id
+            WHERE i.id = :invoice_id AND i.user_id = :uid
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    invoice_data = dict(row._mapping)
+
+    background_tasks.add_task(
+        EmailService.send_invoice_email_with_tracking,
+        invoice_id=str(invoice_id),
+        to=invoice_data["email"],
+        invoice_data={
+            "amount": str(invoice_data["amount"]),
+            "description": invoice_data["description"] or "",
+            "due_date": str(invoice_data["due_date"]),
+            "invoice_number": invoice_data["invoice_number"],
+        },
+    )
+
+    return {"message": "Invoice email resent"}
+
+
+@router.delete("/{invoice_id}")
+async def delete_invoice(
+    invoice_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a specific invoice belonging to the authenticated user."""
+    result = await db.execute(
+        text("DELETE FROM invoices WHERE id = :invoice_id AND user_id = :uid RETURNING id"),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    await db.commit()
+    return {"message": "Invoice deleted"}
+
+
+@router.post("/{invoice_id}/cancel")
+async def cancel_invoice(
+    invoice_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        text("""
+            SELECT id, status
+            FROM invoices
+            WHERE id = :invoice_id AND user_id = :uid
+            FOR UPDATE
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    current_status = dict(row._mapping)["status"]
+
+    valid, error_msg = validate_transition(current_status, "cancelled")
+    if not valid:
+        raise HTTPException(400, error_msg)
+
+    await db.execute(
+        text("UPDATE invoices SET status = 'cancelled' WHERE id = :invoice_id"),
+        {"invoice_id": invoice_id},
+    )
+
+    await db.execute(
+        text("""
+            INSERT INTO invoice_status_history (invoice_id, from_status, to_status, changed_by, reason)
+            VALUES (:invoice_id, :from_status, 'cancelled', :changed_by, :reason)
+        """),
+        {
+            "invoice_id": invoice_id,
+            "from_status": current_status,
+            "changed_by": user_id,
+            "reason": "Cancelled by user",
+        },
+    )
+
+    await db.commit()
+
+    return {
+        "message": "Invoice cancelled successfully",
+        "invoice_id": invoice_id,
+        "status": "cancelled",
+    }
+
+
+@router.post("/{invoice_id}/payments", response_model=InvoiceWithPaymentsOut)
+async def create_payment(
+    invoice_id: UUID,
+    payload: PaymentCreate,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a payment for an invoice. Supports partial payments."""
+    payment_date = payload.payment_date or date.today()
+
+    result = await db.execute(
+        text("""
+            SELECT id, amount, status, due_date
+            FROM invoices
+            WHERE id = :invoice_id AND user_id = :uid
+            FOR UPDATE
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    invoice_row = result.first()
+    if not invoice_row:
+        raise HTTPException(404, "Invoice not found")
+
+    invoice_row = dict(invoice_row._mapping)
+    invoice_amount = Decimal(str(invoice_row["amount"]))
+    current_status = invoice_row["status"]
+
+    if current_status == InvoiceStatus.PAID.value:
+        raise HTTPException(400, "Invoice is already paid")
+
+    if is_terminal_status(current_status):
+        raise HTTPException(
+            400, f"Cannot add payment to invoice with status '{current_status}'"
+        )
+
+    valid, error_msg = validate_transition(current_status, InvoiceStatus.PAID.value)
+    if not valid and current_status != InvoiceStatus.PARTIAL.value:
+        valid_paid, _ = validate_transition(
+            current_status, InvoiceStatus.PARTIAL.value
+        )
+        if not valid_paid:
+            raise HTTPException(400, error_msg)
+
+    total_paid_result = await db.execute(
+        text("""
+            SELECT COALESCE(SUM(amount), 0) as total_paid
+            FROM payments
+            WHERE invoice_id = :invoice_id
+        """),
+        {"invoice_id": invoice_id},
+    )
+    total_paid_row = total_paid_result.first()
+    total_paid = (
+        Decimal(str(dict(total_paid_row._mapping)["total_paid"]))
+        if total_paid_row
+        else Decimal("0")
+    )
+
+    remaining = invoice_amount - total_paid
+
+    if payload.amount > remaining:
+        raise HTTPException(
+            400,
+            f"Payment amount {payload.amount} exceeds remaining {remaining}. "
+            f"Invoice amount: {invoice_amount}, Already paid: {total_paid}",
+        )
+
+    payment_result = await db.execute(
+        text("""
+            INSERT INTO payments (
+                invoice_id, amount, payment_method,
+                payment_date, reference, notes, created_by
+            )
+            VALUES (
+                :invoice_id, :amount, :payment_method,
+                :payment_date, :reference, :notes, :created_by
+            )
+            RETURNING id, invoice_id, amount, payment_method, payment_date, reference, notes, created_at
+        """),
+        {
+            "invoice_id": invoice_id,
+            "amount": payload.amount,
+            "payment_method": payload.payment_method,
+            "payment_date": payment_date,
+            "reference": payload.reference,
+            "notes": payload.notes,
+            "created_by": user_id,
+        },
+    )
+
+    new_total_paid = total_paid + payload.amount
+
+    new_status = "paid" if new_total_paid >= invoice_amount else "partial"
+
+    await db.execute(
+        text("UPDATE invoices SET status = :new_status WHERE id = :invoice_id"),
+        {"new_status": new_status, "invoice_id": invoice_id},
+    )
+
+    await db.execute(
+        text("""
+            INSERT INTO invoice_status_history (invoice_id, from_status, to_status, changed_by, reason)
+            VALUES (:invoice_id, :from_status, :to_status, :changed_by, :reason)
+        """),
+        {
+            "invoice_id": invoice_id,
+            "from_status": current_status,
+            "to_status": new_status,
+            "changed_by": user_id,
+            "reason": f"Payment recorded: {payload.amount}",
+        },
+    )
+
+    await db.commit()
+
+    payment_row = payment_result.first()
+
+    if new_total_paid >= invoice_amount:
+        try:
+            receipt_invoice_result = await db.execute(
+                text("""
+                    SELECT i.id, i.invoice_number, i.amount, c.email, c.name
+                    FROM invoices i
+                    JOIN clients c ON i.client_id = c.id
+                    WHERE i.id = :invoice_id
+                """),
+                {"invoice_id": invoice_id},
+            )
+            receipt_invoice_data = dict(receipt_invoice_result.first()._mapping)
+
+            background_tasks.add_task(
+                EmailService.send_receipt_email_with_tracking,
+                invoice_id=str(invoice_id),
+                to=receipt_invoice_data["email"],
+                receipt_data={
+                    "amount": str(invoice_amount),
+                    "invoice_number": receipt_invoice_data["invoice_number"],
+                    "payment_date": str(payment_date),
+                    "paid_amount": str(new_total_paid),
+                    "payment_method": payload.payment_method,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to queue receipt email: {e}")
+
+    invoice_result = await db.execute(
+        text("SELECT id, amount, status FROM invoices WHERE id = :invoice_id"),
+        {"invoice_id": invoice_id},
+    )
+    invoice_data = dict(invoice_result.first()._mapping)
+
+    payments_result = await db.execute(
+        text("""
+            SELECT id, invoice_id, amount, payment_method, payment_date, reference, created_at
+            FROM payments
+            WHERE invoice_id = :invoice_id
+            ORDER BY created_at ASC
+        """),
+        {"invoice_id": invoice_id},
+    )
+
+    return {
+        "id": invoice_data["id"],
+        "amount": invoice_data["amount"],
+        "status": invoice_data["status"],
+        "paid_amount": new_total_paid,
+        "payments": [dict(row._mapping) for row in payments_result.fetchall()],
+    }
+
+
+@router.post("/{invoice_id}/mark-paid", response_model=InvoiceOut)
+async def mark_invoice_paid(
+    invoice_id: UUID,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark an invoice as fully paid. Creates a payment for the outstanding amount if needed."""
+    result = await db.execute(
+        text("""
+            SELECT id, amount, status
+            FROM invoices
+            WHERE id = :invoice_id AND user_id = :uid
+            FOR UPDATE
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    invoice_row = result.first()
+    if not invoice_row:
+        raise HTTPException(404, "Invoice not found")
+
+    invoice_row = dict(invoice_row._mapping)
+    invoice_amount = Decimal(str(invoice_row["amount"]))
+    current_status = invoice_row["status"]
+
+    if current_status in ("paid", "cancelled", "void"):
+        raise HTTPException(400, f"Invoice already has status '{current_status}'")
+
+    total_paid_result = await db.execute(
+        text("""
+            SELECT COALESCE(SUM(amount), 0) as total_paid
+            FROM payments
+            WHERE invoice_id = :invoice_id
+        """),
+        {"invoice_id": invoice_id},
+    )
+    total_paid_row = total_paid_result.first()
+    total_paid = (
+        Decimal(str(dict(total_paid_row._mapping)["total_paid"]))
+        if total_paid_row
+        else Decimal("0")
+    )
+
+    outstanding_amount = invoice_amount - total_paid
+
+    if outstanding_amount > 0:
+        await db.execute(
+            text("""
+                INSERT INTO payments (invoice_id, amount, payment_method, payment_date, created_by)
+                VALUES (:invoice_id, :amount, :payment_method, NOW(), :created_by)
+            """),
+            {
+                "invoice_id": invoice_id,
+                "amount": outstanding_amount,
+                "payment_method": "mark_paid",
+                "created_by": user_id,
+            },
+        )
+
+    await db.execute(
+        text("UPDATE invoices SET status = 'paid' WHERE id = :invoice_id"),
+        {"invoice_id": invoice_id},
+    )
+
+    await db.execute(
+        text("""
+            INSERT INTO invoice_status_history (invoice_id, from_status, to_status, changed_by, reason)
+            VALUES (:invoice_id, :from_status, 'paid', :changed_by, :reason)
+        """),
+        {
+            "invoice_id": invoice_id,
+            "from_status": current_status,
+            "changed_by": user_id,
+            "reason": "Manually marked as paid",
+        },
+    )
+
+    await db.commit()
+
+    try:
+        invoice_result = await db.execute(
+            text("""
+                SELECT i.id, i.invoice_number, i.amount, c.email, c.name
+                FROM invoices i
+                JOIN clients c ON i.client_id = c.id
+                WHERE i.id = :invoice_id
+            """),
+            {"invoice_id": invoice_id},
+        )
+        invoice_data = dict(invoice_result.first()._mapping)
+
+        background_tasks.add_task(
+            EmailService.send_receipt_email_with_tracking,
+            invoice_id=str(invoice_id),
+            to=invoice_data["email"],
+            receipt_data={
+                "amount": str(invoice_data["amount"]),
+                "invoice_number": invoice_data["invoice_number"],
+                "payment_date": str(datetime.utcnow().date()),
+                "paid_amount": str(invoice_amount),
+                "payment_method": "mark_paid",
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to queue receipt email: {e}")
+
+    updated_result = await db.execute(
+        text("""
+            SELECT id, user_id, client_id, amount, description, due_date, status, created_at, invoice_number
+            FROM invoices
+            WHERE id = :invoice_id
+        """),
+        {"invoice_id": invoice_id},
+    )
+
+    return dict(updated_result.first()._mapping)
+
+
+@router.get("/{invoice_id}/pdf")
+async def get_invoice_pdf(
+    invoice_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and download PDF for an invoice."""
+    result = await db.execute(
+        text("""
+            SELECT
+                i.id, i.amount, i.description, i.due_date, i.status,
+                i.created_at, i.invoice_number,
+                c.name as client_name, c.email as client_email
+            FROM invoices i
+            JOIN clients c ON i.client_id = c.id
+            WHERE i.id = :invoice_id AND i.user_id = :uid
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    data = dict(row._mapping)
+    business_info = await get_business_settings(db, user_id)
+
+    pdf_bytes = PDFService.generate_invoice_pdf(
+        invoice_id=str(data["id"]),
+        invoice_number=data.get("invoice_number"),
+        amount=Decimal(str(data["amount"])),
+        description=data.get("description"),
+        due_date=data["due_date"],
+        status=data["status"],
+        client_name=data["client_name"],
+        client_email=data["client_email"],
+        created_at=data.get("created_at"),
+        business_info=business_info,
+    )
+
+    filename = f"invoice_{data.get('invoice_number') or str(invoice_id)[:8]}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/{invoice_id}/payments/{payment_id}/receipt")
+async def get_payment_receipt(
+    invoice_id: UUID,
+    payment_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and download PDF receipt for a payment."""
+    result = await db.execute(
+        text("""
+            SELECT
+                p.id, p.amount, p.payment_method, p.payment_date,
+                p.reference,
+                i.id as invoice_id, i.invoice_number,
+                c.name as client_name, c.email as client_email
+            FROM payments p
+            JOIN invoices i ON p.invoice_id = i.id
+            JOIN clients c ON i.client_id = c.id
+            WHERE p.id = :payment_id AND i.id = :invoice_id AND i.user_id = :uid
+        """),
+        {"payment_id": payment_id, "invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Payment not found")
+
+    data = dict(row._mapping)
+    business_info = await get_business_settings(db, user_id)
+    receipt_number = f"RCP-{payment_id.hex[:8].upper()}"
+
+    pdf_bytes = PDFService.generate_receipt_pdf(
+        receipt_id=str(data["id"]),
+        receipt_number=receipt_number,
+        invoice_id=str(data["invoice_id"]),
+        invoice_number=data.get("invoice_number"),
+        amount=Decimal(str(data["amount"])),
+        payment_method=data.get("payment_method", "bank_transfer"),
+        payment_date=data["payment_date"],
+        client_name=data["client_name"],
+        client_email=data["client_email"],
+        business_info=business_info,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={receipt_number}.pdf"},
+    )
