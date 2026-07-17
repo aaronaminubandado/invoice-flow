@@ -4,38 +4,43 @@
   --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  --color-background: #0a0a0f;
-  --color-foreground: #f0f0f5;
+  --color-background: #0c1117;
+  --color-foreground: #eef2f6;
 
-  --color-card: #111118;
-  --color-card-foreground: #f0f0f5;
+  --color-card: #121820;
+  --color-card-foreground: #eef2f6;
 
-  --color-popover: #111118;
-  --color-popover-foreground: #f0f0f5;
+  --color-popover: #121820;
+  --color-popover-foreground: #eef2f6;
 
-  --color-primary: #635bff;
+  --color-primary: #0f766e;
   --color-primary-foreground: #ffffff;
 
-  --color-secondary: #1a1a24;
-  --color-secondary-foreground: #f0f0f5;
+  --color-secondary: #1a222d;
+  --color-secondary-foreground: #eef2f6;
 
-  --color-muted: #1a1a24;
-  --color-muted-foreground: #8888a0;
+  --color-muted: #1a222d;
+  --color-muted-foreground: #8b97a8;
 
-  --color-accent: #1e1e2a;
-  --color-accent-foreground: #f0f0f5;
+  --color-accent: #1e2834;
+  --color-accent-foreground: #eef2f6;
 
-  --color-destructive: #e5484d;
+  --color-destructive: #dc4a4a;
   --color-destructive-foreground: #ffffff;
 
-  --color-border: #1e1e2e;
-  --color-input: #1e1e2e;
+  --color-border: #243041;
+  --color-input: #243041;
 
-  --color-ring: #635bff;
+  --color-ring: #14b8a6;
 
-  --color-success: #30a46c;
-  --color-warning: #f5a623;
-  --color-info: #3b82f6;
+  --color-success: #22a06b;
+  --color-warning: #d97706;
+  --color-info: #2563eb;
+
+  --color-document: #faf8f5;
+  --color-document-foreground: #1c1917;
+  --color-document-muted: #78716c;
+  --color-document-border: #e7e5e4;
 
   --radius-lg: 12px;
   --radius-md: 8px;
@@ -43,34 +48,34 @@
 }
 
 .light {
-  --color-background: #fafafa;
-  --color-foreground: #111118;
+  --color-background: #f6f8fa;
+  --color-foreground: #111827;
 
   --color-card: #ffffff;
-  --color-card-foreground: #111118;
+  --color-card-foreground: #111827;
 
   --color-popover: #ffffff;
-  --color-popover-foreground: #111118;
+  --color-popover-foreground: #111827;
 
-  --color-primary: #635bff;
+  --color-primary: #0f766e;
   --color-primary-foreground: #ffffff;
 
-  --color-secondary: #f5f5f7;
-  --color-secondary-foreground: #111118;
+  --color-secondary: #eef2f6;
+  --color-secondary-foreground: #111827;
 
-  --color-muted: #f5f5f7;
-  --color-muted-foreground: #6e6e80;
+  --color-muted: #eef2f6;
+  --color-muted-foreground: #64748b;
 
-  --color-accent: #f0f0f5;
-  --color-accent-foreground: #111118;
+  --color-accent: #e8eef3;
+  --color-accent-foreground: #111827;
 
-  --color-destructive: #e5484d;
+  --color-destructive: #dc4a4a;
   --color-destructive-foreground: #ffffff;
 
-  --color-border: #e8e8ec;
-  --color-input: #e8e8ec;
+  --color-border: #dbe3ea;
+  --color-input: #dbe3ea;
 
-  --color-ring: #635bff;
+  --color-ring: #0f766e;
 }
 
 * {
@@ -89,23 +94,23 @@ body {
 
 @layer utilities {
   .glass {
-    background: rgba(17, 17, 24, 0.8);
+    background: rgba(18, 24, 32, 0.85);
     backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .light .glass {
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(0, 0, 0, 0.06);
   }
 
   .glass-card {
-    background: #111118;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: #121820;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.02),
-      0 1px 2px rgba(0, 0, 0, 0.4),
-      0 4px 16px rgba(0, 0, 0, 0.2);
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 4px 16px rgba(0, 0, 0, 0.18);
   }
 
   .light .glass-card {
@@ -117,20 +122,21 @@ body {
       0 4px 16px rgba(0, 0, 0, 0.04);
   }
 
+  .invoice-document {
+    background: var(--color-document);
+    color: var(--color-document-foreground);
+    border: 1px solid var(--color-document-border);
+    box-shadow:
+      0 1px 2px rgba(28, 25, 23, 0.06),
+      0 8px 24px rgba(28, 25, 23, 0.08);
+  }
+
+  .invoice-document-muted {
+    color: var(--color-document-muted);
+  }
+
   .animate-fade-in {
-    animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .animate-slide-up {
-    animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .animate-scale-in {
-    animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .animate-slide-in {
-    animation: slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .font-mono {
@@ -147,21 +153,6 @@ body {
   to { opacity: 1; }
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(100%); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -172,20 +163,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a3a;
+  background: #334155;
   border-radius: 3px;
 }
 
 .light ::-webkit-scrollbar-thumb {
-  background: #d4d4dc;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #3a3a4a;
-}
-
-.light ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1ac;
+  background: #cbd5e1;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
