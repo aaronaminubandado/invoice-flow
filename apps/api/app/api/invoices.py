@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.schemas.invoice import (
     InvoiceCreate,
     InvoiceOut,
+    InvoiceListOut,
     PaymentCreate,
     PaymentOut,
     InvoiceWithPaymentsOut,
@@ -173,6 +174,8 @@ async def create_invoice(
         else:
             amount = payload.amount
 
+        initial_status = "sent" if payload.send_now else "draft"
+
         result = await db.execute(
             text("""
                 INSERT INTO invoices (
@@ -182,7 +185,7 @@ async def create_invoice(
                 )
                 VALUES (
                     :uid, :cid, :amount, :description,
-                    :due_date, 'sent', :invoice_number,
+                    :due_date, :status, :invoice_number,
                     0, 'pending', :share_token
                 )
                 RETURNING id, user_id, client_id, amount, description, due_date,
@@ -196,6 +199,7 @@ async def create_invoice(
                 "due_date": payload.due_date,
                 "invoice_number": invoice_number,
                 "share_token": share_token,
+                "status": initial_status,
             },
         )
 
@@ -238,7 +242,7 @@ async def create_invoice(
                     }
                 )
 
-        if client_email:
+        if payload.send_now and client_email:
             background_tasks.add_task(
                 EmailService.send_invoice_email_with_tracking,
                 invoice_id=str(invoice_data["id"]),
@@ -271,26 +275,45 @@ async def create_invoice(
         )
 
 
-@router.get("", response_model=list[InvoiceOut])
+@router.get("", response_model=InvoiceListOut)
 async def list_invoices(
     user_id: UUID = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    status: Optional[str] = Query(None),
 ):
-    """List all invoices belonging to the authenticated user."""
+    """List invoices belonging to the authenticated user with pagination."""
+    where_parts = ["i.user_id = :uid"]
+    params: dict = {"uid": user_id, "limit": limit, "offset": offset}
+
+    if status and status != "all":
+        where_parts.append("i.status = :status")
+        params["status"] = status
+
+    where_clause = " AND ".join(where_parts)
+
+    count_result = await db.execute(
+        text(f"SELECT COUNT(*) AS total FROM invoices i WHERE {where_clause}"),
+        params,
+    )
+    total = int(count_result.scalar() or 0)
+
     result = await db.execute(
         text(f"""
             {INVOICE_SELECT}
-            WHERE i.user_id = :uid
+            WHERE {where_clause}
             ORDER BY i.created_at DESC
+            LIMIT :limit OFFSET :offset
         """),
-        {"uid": user_id},
+        params,
     )
     rows = []
     for row in result.fetchall():
         data = dict(row._mapping)
         data["items"] = []
         rows.append(data)
-    return rows
+    return {"items": rows, "total": total}
 
 
 @router.get("/{invoice_id}", response_model=InvoiceOut)
@@ -486,6 +509,96 @@ async def resend_invoice(
     )
 
     return {"message": "Invoice email resent"}
+
+
+@router.post("/{invoice_id}/send", response_model=InvoiceOut)
+async def send_invoice(
+    invoice_id: UUID,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transition a draft invoice to sent and email the client."""
+    result = await db.execute(
+        text("""
+            SELECT i.id, i.status, i.invoice_number, i.amount, i.description,
+                   i.due_date, i.share_token, c.email, c.name
+            FROM invoices i
+            JOIN clients c ON i.client_id = c.id
+            WHERE i.id = :invoice_id AND i.user_id = :uid
+            FOR UPDATE
+        """),
+        {"invoice_id": invoice_id, "uid": user_id},
+    )
+
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Invoice not found")
+
+    invoice_data = dict(row._mapping)
+    current_status = invoice_data["status"]
+
+    valid, error_msg = validate_transition(current_status, InvoiceStatus.SENT.value)
+    if not valid:
+        raise HTTPException(400, error_msg)
+
+    await db.execute(
+        text("""
+            UPDATE invoices
+            SET status = 'sent', last_email_sent_at = NOW()
+            WHERE id = :invoice_id
+        """),
+        {"invoice_id": invoice_id},
+    )
+
+    await db.execute(
+        text("""
+            INSERT INTO invoice_status_history (invoice_id, from_status, to_status, changed_by, reason)
+            VALUES (:invoice_id, :from_status, 'sent', :changed_by, :reason)
+        """),
+        {
+            "invoice_id": invoice_id,
+            "from_status": current_status,
+            "changed_by": user_id,
+            "reason": "Invoice sent by user",
+        },
+    )
+
+    await db.commit()
+
+    items = await fetch_invoice_items(db, invoice_id)
+    items_payload = [
+        {
+            "description": i.description,
+            "quantity": str(i.quantity),
+            "unit_price": str(i.unit_price),
+            "line_total": str(i.line_total),
+        }
+        for i in items
+    ]
+
+    client_email = invoice_data.get("email")
+    if client_email:
+        background_tasks.add_task(
+            EmailService.send_invoice_email_with_tracking,
+            invoice_id=str(invoice_id),
+            to=client_email,
+            invoice_data={
+                "amount": str(invoice_data["amount"]),
+                "description": invoice_data["description"] or "",
+                "due_date": str(invoice_data["due_date"]),
+                "invoice_number": invoice_data["invoice_number"],
+                "share_token": invoice_data.get("share_token"),
+                "client_name": invoice_data.get("name", "Customer"),
+                "items": items_payload,
+            },
+        )
+
+    full = await db.execute(
+        text(f"{INVOICE_SELECT} WHERE i.id = :id"),
+        {"id": invoice_id},
+    )
+    return await _build_invoice_out(db, full.first())
 
 
 @router.delete("/{invoice_id}")

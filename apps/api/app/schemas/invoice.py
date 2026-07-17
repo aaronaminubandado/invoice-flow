@@ -30,6 +30,7 @@ class InvoiceCreate(BaseModel):
     description: str | None = None
     amount: Annotated[Decimal, Field(gt=0)] | None = None
     items: list[InvoiceItemCreate] | None = None
+    send_now: bool = True
 
     @model_validator(mode="after")
     def validate_amount_or_items(self) -> Self:
@@ -94,6 +95,11 @@ class InvoiceWithPaymentsOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class InvoiceListOut(BaseModel):
+    items: list[InvoiceOut]
+    total: int
 
 
 class PublicBusinessInfo(BaseModel):
