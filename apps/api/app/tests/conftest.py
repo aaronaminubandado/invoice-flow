@@ -9,9 +9,12 @@ from uuid import uuid4
 
 
 def _database_url() -> str:
-    url = settings.TEST_DATABASE_URL or settings.DATABASE_URL
+    url = (settings.TEST_DATABASE_URL or "").strip()
     if not url:
-        pytest.skip("DATABASE_URL or TEST_DATABASE_URL must be set")
+        pytest.exit(
+            "TEST_DATABASE_URL must be set for tests. "
+            "Refusing to fall back to DATABASE_URL to protect production data."
+        )
     return url
 
 
