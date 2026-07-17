@@ -7,12 +7,12 @@ from sqlalchemy import text
 
 from app.core.database import get_db
 from app.deps import get_current_user
-from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse
+from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientListOut
 from app.services.export import generate_csv, generate_xlsx, generate_pdf_table
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
-CLIENT_EXPORT_HEADERS = ["Name", "Email", "Created At"]
+CLIENT_EXPORT_HEADERS = ["Name", "Email", "Phone", "Address", "Created At"]
 
 
 @router.get("/export")
@@ -49,6 +49,8 @@ async def export_clients(
         rows.append([
             data.get("name", ""),
             data.get("email", ""),
+            data.get("phone", "") or "",
+            data.get("address", "") or "",
             str(data.get("created_at", "")),
         ])
 
@@ -129,22 +131,32 @@ async def create_client(
     return dict(row._mapping)
 
 
-@router.get("", response_model=list[ClientResponse])
+@router.get("", response_model=ClientListOut)
 async def list_clients(
     user_id: UUID = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ):
-    """List all clients belonging to the authenticated user."""
+    """List clients belonging to the authenticated user with pagination."""
+    count_result = await db.execute(
+        text("SELECT COUNT(*) AS total FROM clients WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    total = int(count_result.scalar() or 0)
+
     result = await db.execute(
         text("""
             SELECT id, name, email, phone, address, created_at
             FROM clients
             WHERE user_id = :uid
             ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
         """),
-        {"uid": user_id},
+        {"uid": user_id, "limit": limit, "offset": offset},
     )
-    return [dict(row._mapping) for row in result.fetchall()]
+    items = [dict(row._mapping) for row in result.fetchall()]
+    return {"items": items, "total": total}
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -156,7 +168,7 @@ async def get_client(
     """Retrieve a specific client owned by the authenticated user."""
     result = await db.execute(
         text("""
-            SELECT id, name, email, created_at
+            SELECT id, name, email, phone, address, created_at
             FROM clients
             WHERE id = :cid AND user_id = :uid
         """),

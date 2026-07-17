@@ -24,3 +24,8 @@ class ClientResponse(BaseModel):
     phone: str | None = None
     address: str | None = None
     created_at: datetime
+
+
+class ClientListOut(BaseModel):
+    items: list[ClientResponse]
+    total: int
