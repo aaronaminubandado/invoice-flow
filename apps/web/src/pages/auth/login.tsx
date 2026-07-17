@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { FileText, Mail, Lock, ArrowRight } from 'lucide-react'
+import { Mail, Lock, ArrowRight } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
+import { LogoMark } from '@/components/brand/logo-mark'
 import { supabase } from '@/lib/supabase'
 
 export function LoginPage() {
@@ -12,46 +12,25 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const demoEmail = import.meta.env.VITE_DEMO_EMAIL as string | undefined
-  const demoPassword = import.meta.env.VITE_DEMO_PASSWORD as string | undefined
-
-  const signIn = async (creds: { email: string; password: string }) => {
-    const { data, error: authError } = await supabase.auth.signInWithPassword(creds)
-
-    if (authError) throw authError
-
-    if (data.session) {
-      navigate('/dashboard')
-    }
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      await signIn({ email, password })
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in')
-    } finally {
-      setLoading(false)
-    }
-  }
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-  const handleDemoSignIn = async () => {
-    if (!demoEmail || !demoPassword) {
-      setError('Demo account is not configured.')
-      return
-    }
+      if (authError) throw authError
 
-    setLoading(true)
-    setError('')
-
-    try {
-      await signIn({ email: demoEmail, password: demoPassword })
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in to demo account')
+      if (data.session) {
+        navigate('/dashboard')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to sign in'
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -61,17 +40,10 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="relative w-full max-w-[400px]"
-      >
+      <div className="relative w-full max-w-[400px] animate-fade-in">
         <div className="glass-card rounded-2xl p-8">
           <div className="flex items-center justify-center gap-2.5 mb-8">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 border border-primary/50">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
+            <LogoMark className="h-10 w-10" />
             <span className="text-xl font-semibold tracking-tight">
               InvoiceFlow
             </span>
@@ -81,17 +53,13 @@ export function LoginPage() {
             Welcome back
           </h1>
           <p className="text-sm text-muted-foreground text-center mb-8">
-            Sign in to your account to continue
+            Sign in to send invoices and get paid faster
           </p>
 
           {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
-            >
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
               {error}
-            </motion.div>
+            </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -146,30 +114,8 @@ export function LoginPage() {
               Sign up
             </Link>
           </p>
-
-          <div className="mt-6 space-y-3 text-center text-xs text-muted-foreground">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full text-[13px]"
-              onClick={handleDemoSignIn}
-              disabled={loading}
-            >
-              Use shared demo account
-            </Button>
-            <div className="space-y-1.5">
-              <p className="font-medium text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
-                Public demo environment
-              </p>
-              <p>
-                Anyone can explore the app using the shared demo account.
-                Data may be reset periodically, so please don&apos;t store any
-                real or sensitive information.
-              </p>
-            </div>
-          </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }
