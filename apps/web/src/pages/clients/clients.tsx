@@ -26,39 +26,29 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/ui/toast'
 import { getErrorMessage } from '@/lib/axios'
+import { downloadBlob, FILE_EXTENSIONS, type ExportFormat } from '@/lib/download'
 import { clientsApi } from '@/services'
-import type { ExportFormat } from '@/services/invoices'
 import { Client, CreateClientInput } from '@/types'
 
-const FILE_EXTENSIONS: Record<ExportFormat, string> = {
-  csv: '.csv',
-  xlsx: '.xlsx',
-  pdf: '.pdf',
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  window.URL.revokeObjectURL(url)
-  document.body.removeChild(a)
-}
+const PAGE_SIZE = 50
 
 export function ClientsPage() {
   const queryClient = useQueryClient()
   const { success, error } = useToast()
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [editClient, setEditClient] = useState<Client | null>(null)
   const [deleteClient, setDeleteClient] = useState<Client | null>(null)
 
-  const { data: clients, isLoading } = useQuery({
-    queryKey: ['clients'],
-    queryFn: clientsApi.list,
+  const { data: clientPage, isLoading } = useQuery({
+    queryKey: ['clients', page],
+    queryFn: () => clientsApi.list({ limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
   })
+
+  const clients = clientPage?.items
+  const totalClients = clientPage?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalClients / PAGE_SIZE))
 
   const createMutation = useMutation({
     mutationFn: (input: CreateClientInput) => clientsApi.create(input),
@@ -161,9 +151,17 @@ export function ClientsPage() {
               ? 'Try adjusting your search'
               : 'Add your first client to get started'}
           </p>
+          {!search && (
+            <Button className="mt-4" onClick={() => setCreateModalOpen(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Client
+            </Button>
+          )}
         </div>
       ) : (
+        <div className="space-y-4">
         <Card>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -232,7 +230,35 @@ export function ClientsPage() {
               </AnimatePresence>
             </TableBody>
           </Table>
+          </div>
         </Card>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Page {page + 1} of {totalPages} · {totalClients} clients
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+        </div>
       )}
 
       <CreateClientModal

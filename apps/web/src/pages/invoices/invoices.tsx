@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus,
   Search,
@@ -30,8 +29,10 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { getErrorMessage } from '@/lib/axios'
 import { formatCurrency } from '@/lib/utils'
+import { downloadBlob, FILE_EXTENSIONS } from '@/lib/download'
+import { invoiceItemsTotal, lineItemTotal } from '@/lib/invoice-items'
 import { invoicesApi, clientsApi } from '@/services'
-import type { ExportFormat } from '@/services/invoices'
+import type { ExportFormat } from '@/lib/download'
 import {
   Invoice,
   Client,
@@ -40,6 +41,8 @@ import {
   CreateInvoiceItemInput,
   Payment,
 } from '@/types'
+
+const PAGE_SIZE = 50
 
 const statusOptions = [
   { value: 'all', label: 'All Status' },
@@ -52,28 +55,12 @@ const statusOptions = [
 ]
 
 
-const FILE_EXTENSIONS: Record<ExportFormat, string> = {
-  csv: '.csv',
-  xlsx: '.xlsx',
-  pdf: '.pdf',
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  window.URL.revokeObjectURL(url)
-  document.body.removeChild(a)
-}
-
 export function InvoicesPage() {
   const queryClient = useQueryClient()
   const { success, error } = useToast()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [page, setPage] = useState(0)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
@@ -83,15 +70,26 @@ export function InvoicesPage() {
   const [markPaidConfirmOpen, setMarkPaidConfirmOpen] = useState(false)
   const [invoiceToMarkPaid, setInvoiceToMarkPaid] = useState<string | null>(null)
 
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['invoices'],
-    queryFn: invoicesApi.list,
+  const { data: invoicePage, isLoading } = useQuery({
+    queryKey: ['invoices', page, statusFilter],
+    queryFn: () =>
+      invoicesApi.list({
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+      }),
   })
 
-  const { data: clients } = useQuery({
-    queryKey: ['clients'],
-    queryFn: clientsApi.list,
+  const invoices = invoicePage?.items
+  const totalInvoices = invoicePage?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalInvoices / PAGE_SIZE))
+
+  const { data: clientsPage } = useQuery({
+    queryKey: ['clients', 'options'],
+    queryFn: () => clientsApi.list({ limit: 200, offset: 0 }),
   })
+
+  const clients = clientsPage?.items
 
   const createMutation = useMutation({
     mutationFn: (input: CreateInvoiceInput) => invoicesApi.create(input),
@@ -139,14 +137,22 @@ export function InvoicesPage() {
     onError: (err: unknown) => error(getErrorMessage(err)),
   })
 
+  const sendMutation = useMutation({
+    mutationFn: (id: string) => invoicesApi.send(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      success('Invoice sent successfully')
+    },
+    onError: (err: unknown) => error(getErrorMessage(err)),
+  })
+
   const filteredInvoices = invoices?.filter((invoice) => {
     const matchesSearch =
       !search ||
       invoice.description?.toLowerCase().includes(search.toLowerCase()) ||
       invoice.invoice_number?.toLowerCase().includes(search.toLowerCase()) ||
       invoice.client_name?.toLowerCase().includes(search.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter
-    return matchesSearch && matchesStatus
+    return matchesSearch
   })
 
   const handleExport = (fmt: ExportFormat) => {
@@ -166,7 +172,7 @@ export function InvoicesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Invoices</h1>
           <p className="text-muted-foreground mt-1">
-            Manage and track all your invoices
+            Create, send, and track client invoices
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -191,7 +197,10 @@ export function InvoicesPage() {
         <Select
           options={statusOptions}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value)
+            setPage(0)
+          }}
           className="w-40"
         />
       </div>
@@ -213,18 +222,18 @@ export function InvoicesPage() {
               ? 'Try adjusting your search or filters'
               : 'Create your first invoice to get started'}
           </p>
+          {!search && statusFilter === 'all' && (
+            <Button className="mt-4" onClick={() => setCreateModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Invoice
+            </Button>
+          )}
         </div>
       ) : (
+        <div className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <AnimatePresence>
-            {filteredInvoices?.map((invoice, index) => (
-              <motion.div
-                key={invoice.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ delay: index * 0.04 }}
-              >
+            {filteredInvoices?.map((invoice) => (
+              <div key={invoice.id}>
                 <Card className="hover:border-primary/30 transition-colors group">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between mb-3">
@@ -240,6 +249,17 @@ export function InvoicesPage() {
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
+                        {invoice.status === 'draft' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => sendMutation.mutate(invoice.id)}
+                            title="Send invoice"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         {invoice.status !== 'paid' &&
                           invoice.status !== 'cancelled' && (
                             <>
@@ -319,9 +339,35 @@ export function InvoicesPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-sm text-muted-foreground">
+                Page {page + 1} of {totalPages} · {totalInvoices} invoices
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page + 1 >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -408,18 +454,28 @@ function CreateInvoiceModal({
   const [items, setItems] = useState<CreateInvoiceItemInput[]>([emptyItem()])
 
   const lineTotal = (item: CreateInvoiceItemInput) =>
-    (Number(item.quantity) || 0) * (Number(item.unit_price) || 0)
+    lineItemTotal({ quantity: Number(item.quantity), unit_price: Number(item.unit_price) })
 
-  const runningTotal = items.reduce((sum, item) => sum + lineTotal(item), 0)
+  const runningTotal = invoiceItemsTotal(
+    items.map((item) => ({
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+    }))
+  )
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitInvoice = (sendNow: boolean) => {
     onSubmit({
       client_id: clientId,
       due_date: dueDate,
       description: description || undefined,
       items: items.filter((i) => i.description.trim()),
+      send_now: sendNow,
     })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submitInvoice(true)
   }
 
   const isValid =
@@ -545,6 +601,14 @@ function CreateInvoiceModal({
         <div className="flex justify-end gap-2.5 pt-3">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={loading || !isValid}
+            onClick={() => submitInvoice(false)}
+          >
+            {loading ? 'Saving...' : 'Save as draft'}
           </Button>
           <Button type="submit" disabled={loading || !isValid}>
             {loading ? 'Creating...' : 'Create & Send'}
@@ -683,7 +747,7 @@ function InvoiceDetailsDrawer({
       {isLoading || !invoice ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : (
-        <div className="space-y-5">
+        <div className="invoice-document rounded-xl p-6 md:p-8 space-y-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-muted-foreground mb-0.5">Invoice Number</p>

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import {
   DollarSign,
   TrendingUp,
@@ -7,6 +7,8 @@ import {
   AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -18,12 +20,12 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui'
-import { metricsApi } from '@/services'
-
-const formatCurrency = (value: string) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-    parseFloat(value) || 0
-  )
+import { metricsApi, clientsApi, invoicesApi, settingsApi } from '@/services'
+import { formatCurrency } from '@/lib/utils'
+import {
+  buildOnboardingSteps,
+  shouldShowOnboarding,
+} from '@/lib/onboarding'
 
 const statCards = [
   {
@@ -67,22 +69,71 @@ export function DashboardPage() {
     queryFn: metricsApi.getMonthlyRevenue,
   })
 
+  const { data: settings, isError: settingsMissing } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.get,
+    retry: false,
+  })
+
+  const { data: clientsPage } = useQuery({
+    queryKey: ['clients', 'count'],
+    queryFn: () => clientsApi.list({ limit: 1, offset: 0 }),
+  })
+
+  const { data: invoicesPage } = useQuery({
+    queryKey: ['invoices', 'count'],
+    queryFn: () => invoicesApi.list({ limit: 1, offset: 0 }),
+  })
+
+  const invoiceTotal = invoicesPage?.total ?? 0
+  const clientTotal = clientsPage?.total ?? 0
+  const showOnboarding = shouldShowOnboarding(invoiceTotal)
+  const onboardingSteps = buildOnboardingSteps(
+    !settingsMissing && Boolean(settings),
+    clientTotal,
+    invoiceTotal
+  )
+  const currency = settings?.currency ?? 'USD'
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground mt-1">
-          Overview of your business performance
+          Revenue, collections, and what needs attention
         </p>
       </div>
 
+      {showOnboarding && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Get started with InvoiceFlow</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {onboardingSteps.map((step) => (
+              <Link
+                key={step.id}
+                to={step.href}
+                className="flex items-center gap-3 rounded-lg border border-border px-4 py-3 hover:bg-accent/50 transition-colors"
+              >
+                {step.done ? (
+                  <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                ) : (
+                  <Circle className="h-5 w-5 text-muted-foreground shrink-0" />
+                )}
+                <span className={step.done ? 'text-muted-foreground line-through' : ''}>
+                  {step.label}
+                </span>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat, index) => (
-          <motion.div
+          <div
             key={stat.key}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: index * 0.08 }}
           >
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -101,22 +152,18 @@ export function DashboardPage() {
                 ) : (
                   <span className="text-2xl font-bold font-mono tabular-nums">
                     {summary
-                      ? formatCurrency(summary[stat.key as keyof typeof summary])
-                      : formatCurrency('0')}
+                      ? formatCurrency(summary[stat.key as keyof typeof summary], currency)
+                      : formatCurrency('0', currency)}
                   </span>
                 )}
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         ))}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.32 }}
-        >
+        <div>
           <Card>
             <CardHeader>
               <CardTitle>Revenue Overview</CardTitle>
@@ -132,8 +179,8 @@ export function DashboardPage() {
                   <AreaChart data={monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorPaid" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#635bff" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#635bff" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#0f766e" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#0f766e" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorOutstanding" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} />
@@ -189,7 +236,7 @@ export function DashboardPage() {
                                     {entry.name}
                                   </span>
                                   <span className="font-mono tabular-nums font-medium">
-                                    {formatCurrency(entry.value as string)}
+                                    {formatCurrency(entry.value as string, currency)}
                                   </span>
                                 </div>
                               ))}
@@ -201,7 +248,7 @@ export function DashboardPage() {
                     <Area
                       type="monotone"
                       dataKey="paid"
-                      stroke="#635bff"
+                      stroke="#0f766e"
                       strokeWidth={2}
                       fill="url(#colorPaid)"
                       name="Paid"
@@ -223,13 +270,9 @@ export function DashboardPage() {
               )}
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.4 }}
-        >
+        <div>
           <Card>
             <CardHeader>
               <CardTitle>Quick Stats</CardTitle>
@@ -276,7 +319,7 @@ export function DashboardPage() {
                           Pending Amount
                         </p>
                         <p className="text-xl font-semibold font-mono tabular-nums">
-                          {formatCurrency(summary.total_outstanding)}
+                          {formatCurrency(summary.total_outstanding, currency)}
                         </p>
                       </div>
                     </div>
@@ -290,7 +333,7 @@ export function DashboardPage() {
                           Overdue Amount
                         </p>
                         <p className="text-xl font-semibold font-mono tabular-nums">
-                          {formatCurrency(summary.total_overdue)}
+                          {formatCurrency(summary.total_overdue, currency)}
                         </p>
                       </div>
                     </div>
@@ -299,7 +342,7 @@ export function DashboardPage() {
               )}
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
     </div>
   )

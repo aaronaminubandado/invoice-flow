@@ -1,10 +1,12 @@
 import { api } from '@/lib/axios'
-import { Client, CreateClientInput } from '@/types'
-import type { ExportFormat } from './invoices'
+import { Client, CreateClientInput, PaginatedResponse } from '@/types'
+import type { ExportFormat } from '@/lib/download'
 
 export const clientsApi = {
-  list: async () => {
-    const { data } = await api.get<Client[]>('/clients')
+  list: async (params?: { limit?: number; offset?: number }) => {
+    const { data } = await api.get<PaginatedResponse<Client>>('/clients', {
+      params,
+    })
     return data
   },
 

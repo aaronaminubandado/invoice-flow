@@ -5,13 +5,21 @@ import {
   CreatePaymentInput,
   Payment,
   InvoiceWithPayments,
+  PaginatedResponse,
 } from '@/types'
+import type { ExportFormat } from '@/lib/download'
 
-export type ExportFormat = 'csv' | 'xlsx' | 'pdf'
+export type { ExportFormat }
 
 export const invoicesApi = {
-  list: async () => {
-    const { data } = await api.get<Invoice[]>('/invoices')
+  list: async (params?: {
+    limit?: number
+    offset?: number
+    status?: string
+  }) => {
+    const { data } = await api.get<PaginatedResponse<Invoice>>('/invoices', {
+      params,
+    })
     return data
   },
 
@@ -22,6 +30,11 @@ export const invoicesApi = {
 
   create: async (input: CreateInvoiceInput) => {
     const { data } = await api.post<Invoice>('/invoices', input)
+    return data
+  },
+
+  send: async (id: string) => {
+    const { data } = await api.post<Invoice>(`/invoices/${id}/send`)
     return data
   },
 

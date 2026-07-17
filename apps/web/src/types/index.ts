@@ -1,3 +1,8 @@
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+}
+
 export interface Client {
   id: string
   user_id?: string
@@ -83,6 +88,7 @@ export interface CreateInvoiceInput {
   description?: string
   amount?: number
   items?: CreateInvoiceItemInput[]
+  send_now?: boolean
 }
 
 export interface CreatePaymentInput {
