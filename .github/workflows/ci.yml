@@ -40,6 +40,9 @@ jobs:
           for f in migrations/*.sql; do
             psql -h localhost -U postgres -d invoiceflow_test -f "$f"
           done
+      - name: Lint backend
+        working-directory: apps/api
+        run: ruff check app --ignore F401,F841,F811
       - name: Export OpenAPI spec
         working-directory: apps/api
         run: python scripts/export_openapi.py
@@ -47,7 +50,8 @@ jobs:
         working-directory: apps/api
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/invoiceflow_test
-        run: pytest -q || true
+          PYTHONPATH: .
+        run: pytest -q
 
   frontend:
     runs-on: ubuntu-latest
@@ -60,8 +64,14 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
-      - name: Lint and build web
+      - name: Lint, test, and build web
         working-directory: apps/web
         run: |
           npm run lint
+          npm test
           npm run build
+      - name: Verify demo credentials not in bundle
+        working-directory: apps/web
+        run: |
+          npm run build
+          ! grep -r "VITE_DEMO_PASSWORD" dist/ || (echo "Demo password found in bundle" && exit 1)
