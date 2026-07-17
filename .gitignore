@@ -25,5 +25,8 @@ apps/web/dist/
 auto-invoice/
 invoice-frontend/
 
+# Local review docs (not tracked)
+review/
+
 # Misc
 skills-lock.json
