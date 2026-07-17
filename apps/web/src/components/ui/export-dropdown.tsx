@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Download, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react'
 import { Button } from './button'
-import type { ExportFormat } from '@/services/invoices'
+import type { ExportFormat } from '@/lib/download'
 
 interface ExportDropdownProps {
   onExport: (format: ExportFormat) => void

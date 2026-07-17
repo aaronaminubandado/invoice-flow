@@ -29,36 +29,10 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/components/ui/toast'
 import { metricsApi } from '@/services'
-import type { ExportFormat } from '@/services/invoices'
+import { formatCurrency } from '@/lib/utils'
+import { downloadBlob, FILE_EXTENSIONS, type ExportFormat } from '@/lib/download'
 
-const COLORS = ['#635bff', '#f59e0b', '#e5484d', '#30a46c']
-
-const formatCurrency = (value: string | number) => {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(num)
-}
-
-const FILE_EXTENSIONS: Record<ExportFormat, string> = {
-  csv: '.csv',
-  xlsx: '.xlsx',
-  pdf: '.pdf',
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  window.URL.revokeObjectURL(url)
-  document.body.removeChild(a)
-}
+const COLORS = ['#0f766e', '#d97706', '#dc4a4a', '#22a06b']
 
 export function MetricsPage() {
   const { success, error } = useToast()
@@ -236,7 +210,7 @@ export function MetricsPage() {
                     />
                     <Bar
                       dataKey="paid"
-                      fill="#635bff"
+                      fill="#0f766e"
                       name="Paid"
                       radius={[4, 4, 0, 0]}
                     />
