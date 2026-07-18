@@ -66,6 +66,7 @@ export function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(0)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [createFormKey, setCreateFormKey] = useState(0)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [detailsInvoice, setDetailsInvoice] = useState<Invoice | null>(null)
@@ -99,6 +100,7 @@ export function InvoicesPage() {
     mutationFn: (input: CreateInvoiceInput) => invoicesApi.create(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      setCreateFormKey((key) => key + 1)
       setCreateModalOpen(false)
       success('Invoice created successfully')
     },
@@ -181,7 +183,10 @@ export function InvoicesPage() {
         </div>
         <div className="flex items-center gap-2">
           <ExportDropdown onExport={handleExport} />
-          <Button onClick={() => setCreateModalOpen(true)}>
+          <Button onClick={() => {
+            setCreateFormKey((key) => key + 1)
+            setCreateModalOpen(true)
+          }}>
             <Plus className="h-4 w-4 mr-2" />
             Create Invoice
           </Button>
@@ -227,7 +232,10 @@ export function InvoicesPage() {
               : 'Create your first invoice to get started'}
           </p>
           {!search && statusFilter === 'all' && (
-            <Button className="mt-4" onClick={() => setCreateModalOpen(true)}>
+            <Button className="mt-4" onClick={() => {
+              setCreateFormKey((key) => key + 1)
+              setCreateModalOpen(true)
+            }}>
               <Plus className="h-4 w-4 mr-2" />
               Create Invoice
             </Button>
@@ -413,6 +421,7 @@ export function InvoicesPage() {
 
       <CreateInvoiceModal
         open={createModalOpen}
+        formKey={createFormKey}
         onClose={() => setCreateModalOpen(false)}
         clients={clients || []}
         currency={currency}
@@ -474,6 +483,7 @@ export function InvoicesPage() {
 
 function CreateInvoiceModal({
   open,
+  formKey,
   onClose,
   clients,
   currency,
@@ -481,11 +491,41 @@ function CreateInvoiceModal({
   loading,
 }: {
   open: boolean
+  formKey: number
   onClose: () => void
   clients: Client[]
   currency: string
   onSubmit: (data: CreateInvoiceInput) => void
   loading: boolean
+}) {
+  if (!open) return null
+
+  return (
+    <Modal open={open} onClose={onClose} title="Create Invoice">
+      <CreateInvoiceForm
+        key={formKey}
+        clients={clients}
+        currency={currency}
+        onSubmit={onSubmit}
+        loading={loading}
+        onCancel={onClose}
+      />
+    </Modal>
+  )
+}
+
+function CreateInvoiceForm({
+  clients,
+  currency,
+  onSubmit,
+  loading,
+  onCancel,
+}: {
+  clients: Client[]
+  currency: string
+  onSubmit: (data: CreateInvoiceInput) => void
+  loading: boolean
+  onCancel: () => void
 }) {
   const emptyItem = (): CreateInvoiceItemInput => ({
     description: '',
@@ -529,7 +569,6 @@ function CreateInvoiceModal({
     items.some((i) => i.description.trim() && lineTotal(i) > 0)
 
   return (
-    <Modal open={open} onClose={onClose} title="Create Invoice">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Client</label>
@@ -643,7 +682,7 @@ function CreateInvoiceModal({
         </div>
 
         <div className="flex justify-end gap-2.5 pt-3">
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button
@@ -659,7 +698,6 @@ function CreateInvoiceModal({
           </Button>
         </div>
       </form>
-    </Modal>
   )
 }
 
