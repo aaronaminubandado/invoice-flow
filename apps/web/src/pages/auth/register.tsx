@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FileText, Mail, Lock, User, ArrowRight } from 'lucide-react'
+import { Mail, Lock, User, ArrowRight } from 'lucide-react'
 import { Button, Input, PasswordInput } from '@/components/ui'
+import { LogoMark } from '@/components/brand/logo-mark'
 import { supabase } from '@/lib/supabase'
 
 export function RegisterPage() {
@@ -51,9 +52,7 @@ export function RegisterPage() {
       >
         <div className="glass-card rounded-2xl p-8">
           <div className="flex items-center justify-center gap-2.5 mb-8">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 border border-primary/50">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
+            <LogoMark className="h-10 w-10" />
             <span className="text-xl font-semibold tracking-tight">
               InvoiceFlow
             </span>
