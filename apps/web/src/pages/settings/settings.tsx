@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { Save, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,9 +12,12 @@ import {
   CardTitle,
   Skeleton,
 } from '@/components/ui'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/hooks/useToast'
 import { settingsApi } from '@/services/settings'
-import type { BusinessSettingsInput } from '@/services/settings'
+import type {
+  BusinessSettings,
+  BusinessSettingsInput,
+} from '@/services/settings'
 
 const currencies = [
   { value: 'USD', label: 'USD — US Dollar' },
@@ -27,14 +31,6 @@ const currencies = [
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const { success, error: showError } = useToast()
-  const [formData, setFormData] = useState<BusinessSettingsInput>({
-    business_name: '',
-    business_email: '',
-    phone: '',
-    address: '',
-    currency: 'USD',
-    logo_url: '',
-  })
 
   const {
     data: settings,
@@ -46,19 +42,6 @@ export function SettingsPage() {
     queryFn: settingsApi.get,
     retry: false,
   })
-
-  useEffect(() => {
-    if (settings) {
-      setFormData({
-        business_name: settings.business_name || '',
-        business_email: settings.business_email || '',
-        phone: settings.phone || '',
-        address: settings.address || '',
-        currency: settings.currency || 'USD',
-        logo_url: settings.logo_url || '',
-      })
-    }
-  }, [settings])
 
   const updateMutation = useMutation({
     mutationFn: settingsApi.update,
@@ -78,8 +61,7 @@ export function SettingsPage() {
     onError: () => showError('Failed to save settings'),
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (formData: BusinessSettingsInput) => {
     if (settings) {
       updateMutation.mutate(formData)
     } else {
@@ -88,7 +70,9 @@ export function SettingsPage() {
   }
 
   const isPending = updateMutation.isPending || createMutation.isPending
-  const isFirstTime = isError && !settings
+  const isFirstTime =
+    isError && isAxiosError(queryError) && queryError.response?.status === 404
+  const hasLoadError = isError && !isFirstTime
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl">
@@ -117,7 +101,55 @@ export function SettingsPage() {
             <Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
+      ) : hasLoadError ? (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <AlertCircle className="mx-auto h-6 w-6 text-destructive" />
+            <p className="mt-3 font-medium">Business settings could not be loaded</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Check your connection and try again.
+            </p>
+          </CardContent>
+        </Card>
       ) : (
+        <SettingsForm
+          key={settings?.id ?? 'new-settings'}
+          settings={settings}
+          isFirstTime={isFirstTime}
+          isPending={isPending}
+          onSubmit={handleSubmit}
+        />
+      )}
+    </div>
+  )
+}
+
+function SettingsForm({
+  settings,
+  isFirstTime,
+  isPending,
+  onSubmit,
+}: {
+  settings?: BusinessSettings
+  isFirstTime: boolean
+  isPending: boolean
+  onSubmit: (data: BusinessSettingsInput) => void
+}) {
+  const [formData, setFormData] = useState<BusinessSettingsInput>({
+    business_name: settings?.business_name || '',
+    business_email: settings?.business_email || '',
+    phone: settings?.phone || '',
+    address: settings?.address || '',
+    currency: settings?.currency || 'USD',
+    logo_url: settings?.logo_url || '',
+  })
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    onSubmit(formData)
+  }
+
+  return (
         <form onSubmit={handleSubmit}>
           {isFirstTime && (
             <div className="mb-4 flex items-start gap-3 rounded-lg bg-primary/5 border border-primary/10 p-4">
@@ -228,7 +260,5 @@ export function SettingsPage() {
             </CardContent>
           </Card>
         </form>
-      )}
-    </div>
   )
 }

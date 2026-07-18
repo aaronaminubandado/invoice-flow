@@ -30,23 +30,4 @@ function Badge({ className, variant, ...props }: BadgeProps) {
   return <div className={cn(badgeVariants({ variant }), className)} {...props} />
 }
 
-export function getStatusBadgeVariant(status: string) {
-  switch (status) {
-    case 'paid':
-      return 'success'
-    case 'sent':
-      return 'info'
-    case 'overdue':
-      return 'destructive'
-    case 'partial':
-      return 'warning'
-    case 'cancelled':
-    case 'void':
-    case 'draft':
-      return 'secondary'
-    default:
-      return 'default'
-  }
-}
-
-export { Badge, badgeVariants }
+export { Badge }

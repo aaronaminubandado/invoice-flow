@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -24,7 +24,7 @@ import {
   Skeleton,
   ExportDropdown,
 } from '@/components/ui'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/hooks/useToast'
 import { getErrorMessage } from '@/lib/axios'
 import { downloadBlob, FILE_EXTENSIONS, type ExportFormat } from '@/lib/download'
 import { clientsApi } from '@/services'
@@ -391,23 +391,39 @@ function EditClientModal({
   onSubmit: (data: Partial<CreateClientInput>) => void
   loading: boolean
 }) {
-  const [formData, setFormData] = useState<Partial<CreateClientInput>>({
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-  })
+  if (!client) return null
 
-  useEffect(() => {
-    if (client) {
-      setFormData({
-        name: client.name,
-        email: client.email,
-        phone: client.phone || '',
-        address: client.address || '',
-      })
-    }
-  }, [client])
+  return (
+    <EditClientForm
+      key={client.id}
+      open={open}
+      onClose={onClose}
+      client={client}
+      onSubmit={onSubmit}
+      loading={loading}
+    />
+  )
+}
+
+function EditClientForm({
+  open,
+  onClose,
+  client,
+  onSubmit,
+  loading,
+}: {
+  open: boolean
+  onClose: () => void
+  client: Client
+  onSubmit: (data: Partial<CreateClientInput>) => void
+  loading: boolean
+}) {
+  const [formData, setFormData] = useState<Partial<CreateClientInput>>({
+    name: client.name,
+    email: client.email,
+    phone: client.phone || '',
+    address: client.address || '',
+  })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

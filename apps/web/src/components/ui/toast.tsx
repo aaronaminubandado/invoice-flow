@@ -1,26 +1,13 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { useState, useCallback, ReactNode } from 'react'
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react'
-
-type ToastType = 'success' | 'error' | 'info'
-
-interface Toast {
-  id: string
-  message: string
-  type: ToastType
-}
-
-interface ToastContextType {
-  toasts: Toast[]
-  showToast: (message: string, type?: ToastType) => void
-  success: (message: string) => void
-  error: (message: string) => void
-  info: (message: string) => void
-}
-
-const ToastContext = createContext<ToastContextType | null>(null)
+import {
+  ToastContext,
+  type ToastMessage,
+  type ToastType,
+} from './toast-context'
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([])
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -44,15 +31,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   )
 }
 
-export function useToast() {
-  const context = useContext(ToastContext)
-  if (!context) {
-    throw new Error('useToast must be used within a ToastProvider')
-  }
-  return context
-}
-
-function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) {
+function ToastContainer({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: string) => void }) {
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {toasts.map((toast) => (
@@ -62,7 +41,7 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
   )
 }
 
-function Toast({ toast, onRemove }: { toast: Toast; onRemove: () => void }) {
+function Toast({ toast, onRemove }: { toast: ToastMessage; onRemove: () => void }) {
   const icons = {
     success: <CheckCircle className="h-5 w-5 text-green-500" />,
     error: <AlertCircle className="h-5 w-5 text-red-500" />,

@@ -20,7 +20,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui'
-import { metricsApi, clientsApi, invoicesApi, settingsApi } from '@/services'
+import { metricsApi, clientsApi, invoicesApi } from '@/services'
+import { useSettings } from '@/hooks/useSettings'
 import { formatCurrency } from '@/lib/utils'
 import {
   buildOnboardingSteps,
@@ -69,31 +70,29 @@ export function DashboardPage() {
     queryFn: metricsApi.getMonthlyRevenue,
   })
 
-  const { data: settings, isError: settingsMissing } = useQuery({
-    queryKey: ['settings'],
-    queryFn: settingsApi.get,
-    retry: false,
-  })
+  const { currency, hasSettings, isLoading: settingsLoading, isError: settingsMissing } =
+    useSettings()
 
-  const { data: clientsPage } = useQuery({
+  const { data: clientsPage, isLoading: clientsLoading } = useQuery({
     queryKey: ['clients', 'count'],
     queryFn: () => clientsApi.list({ limit: 1, offset: 0 }),
   })
 
-  const { data: invoicesPage } = useQuery({
+  const { data: invoicesPage, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices', 'count'],
     queryFn: () => invoicesApi.list({ limit: 1, offset: 0 }),
   })
 
   const invoiceTotal = invoicesPage?.total ?? 0
   const clientTotal = clientsPage?.total ?? 0
-  const showOnboarding = shouldShowOnboarding(invoiceTotal)
   const onboardingSteps = buildOnboardingSteps(
-    !settingsMissing && Boolean(settings),
+    !settingsMissing && hasSettings,
     clientTotal,
     invoiceTotal
   )
-  const currency = settings?.currency ?? 'USD'
+  const onboardingReady =
+    !summaryLoading && !settingsLoading && !clientsLoading && !invoicesLoading
+  const showOnboarding = onboardingReady && shouldShowOnboarding(onboardingSteps)
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -131,7 +130,7 @@ export function DashboardPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((stat, index) => (
+        {statCards.map((stat) => (
           <div
             key={stat.key}
           >
