@@ -25,8 +25,11 @@ import {
   Select,
   InvoiceCardSkeleton,
   ExportDropdown,
+  Tooltip,
+  ClientSearchCombobox,
 } from '@/components/ui'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/hooks/useToast'
+import { useSettings } from '@/hooks/useSettings'
 import { getErrorMessage } from '@/lib/axios'
 import { formatCurrency } from '@/lib/utils'
 import { downloadBlob, FILE_EXTENSIONS } from '@/lib/download'
@@ -58,6 +61,7 @@ const statusOptions = [
 export function InvoicesPage() {
   const queryClient = useQueryClient()
   const { success, error } = useToast()
+  const { currency } = useSettings()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(0)
@@ -241,66 +245,75 @@ export function InvoicesPage() {
                         {invoice.status}
                       </Badge>
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => setDetailsInvoice(invoice)}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                        {invoice.status === 'draft' && (
+                        <Tooltip label="View invoice details">
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => sendMutation.mutate(invoice.id)}
-                            title="Send invoice"
+                            onClick={() => setDetailsInvoice(invoice)}
                           >
-                            <Send className="h-3.5 w-3.5" />
+                            <Eye className="h-3.5 w-3.5" />
                           </Button>
+                        </Tooltip>
+                        {invoice.status === 'draft' && (
+                          <Tooltip label="Send invoice">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => sendMutation.mutate(invoice.id)}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                            </Button>
+                          </Tooltip>
                         )}
                         {invoice.status !== 'paid' &&
                           invoice.status !== 'cancelled' && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => {
-                                  setSelectedInvoice(invoice)
-                                  setPaymentModalOpen(true)
-                                }}
-                              >
-                                <CreditCard className="h-3.5 w-3.5" />
-                              </Button>
-                              {(invoice.status === 'sent' ||
-                                invoice.status === 'overdue') && (
+                              <Tooltip label="Record payment">
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
                                   onClick={() => {
-                                    setInvoiceToMarkPaid(invoice.id)
-                                    setMarkPaidConfirmOpen(true)
+                                    setSelectedInvoice(invoice)
+                                    setPaymentModalOpen(true)
                                   }}
                                 >
-                                  <Check className="h-3.5 w-3.5" />
+                                  <CreditCard className="h-3.5 w-3.5" />
                                 </Button>
-                              )}
-                              {invoice.status !== 'overdue' &&
-                                invoice.status !== 'partial' && (
+                              </Tooltip>
+                              {(invoice.status === 'sent' ||
+                                invoice.status === 'overdue') && (
+                                <Tooltip label="Mark as paid">
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 text-destructive"
+                                    className="h-7 w-7"
                                     onClick={() => {
-                                      setInvoiceToCancel(invoice.id)
-                                      setCancelConfirmOpen(true)
+                                      setInvoiceToMarkPaid(invoice.id)
+                                      setMarkPaidConfirmOpen(true)
                                     }}
                                   >
-                                    <X className="h-3.5 w-3.5" />
+                                    <Check className="h-3.5 w-3.5" />
                                   </Button>
+                                </Tooltip>
+                              )}
+                              {invoice.status !== 'overdue' &&
+                                invoice.status !== 'partial' && (
+                                  <Tooltip label="Cancel invoice">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive"
+                                      onClick={() => {
+                                        setInvoiceToCancel(invoice.id)
+                                        setCancelConfirmOpen(true)
+                                      }}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </Tooltip>
                                 )}
                             </>
                           )}
@@ -313,12 +326,39 @@ export function InvoicesPage() {
 
                     <div className="flex items-baseline justify-between mb-1.5">
                       <span className="text-xl font-bold font-mono tabular-nums">
-                        {formatCurrency(invoice.amount)}
+                        {formatCurrency(invoice.amount, currency)}
                       </span>
                       <span className="text-xs font-mono text-muted-foreground">
                         {invoice.invoice_number || `#${invoice.id.slice(0, 8)}`}
                       </span>
                     </div>
+
+                    {(invoice.status === 'partial' ||
+                      Number(invoice.paid_amount ?? 0) > 0) && (
+                      <div className="mb-2 space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>
+                            Paid {formatCurrency(invoice.paid_amount ?? 0, currency)}
+                          </span>
+                          <span>
+                            Due {formatCurrency(invoice.balance_due ?? invoice.amount, currency)}
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (Number(invoice.paid_amount ?? 0) /
+                                  Math.max(Number(invoice.amount), 1)) *
+                                  100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     <p className="text-sm text-muted-foreground truncate mb-3">
                       {invoice.description || 'No description'}
@@ -375,6 +415,7 @@ export function InvoicesPage() {
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         clients={clients || []}
+        currency={currency}
         onSubmit={(data) => createMutation.mutate(data)}
         loading={createMutation.isPending}
       />
@@ -386,6 +427,7 @@ export function InvoicesPage() {
           setSelectedInvoice(null)
         }}
         invoice={selectedInvoice}
+        currency={currency}
         onSubmit={(input) => {
           if (selectedInvoice) {
             paymentMutation.mutate({ id: selectedInvoice.id, input })
@@ -398,6 +440,7 @@ export function InvoicesPage() {
         open={!!detailsInvoice}
         onClose={() => setDetailsInvoice(null)}
         invoiceId={detailsInvoice?.id ?? null}
+        currency={currency}
         onResend={(id: string) => resendMutation.mutate(id)}
       />
 
@@ -433,12 +476,14 @@ function CreateInvoiceModal({
   open,
   onClose,
   clients,
+  currency,
   onSubmit,
   loading,
 }: {
   open: boolean
   onClose: () => void
   clients: Client[]
+  currency: string
   onSubmit: (data: CreateInvoiceInput) => void
   loading: boolean
 }) {
@@ -488,11 +533,10 @@ function CreateInvoiceModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Client</label>
-          <Select
-            options={clients.map((c) => ({ value: c.id, label: c.name }))}
+          <ClientSearchCombobox
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            placeholder="Select a client"
+            onChange={setClientId}
+            initialClients={clients}
           />
         </div>
 
@@ -558,7 +602,7 @@ function CreateInvoiceModal({
                 />
               </div>
               <div className="col-span-2 text-right text-sm font-mono py-2">
-                {formatCurrency(lineTotal(item))}
+                {formatCurrency(lineTotal(item), currency)}
               </div>
               <div className="col-span-1">
                 {items.length > 1 && (
@@ -576,7 +620,7 @@ function CreateInvoiceModal({
           ))}
           <div className="flex justify-end pt-1">
             <span className="text-sm text-muted-foreground mr-2">Total</span>
-            <span className="font-bold font-mono">{formatCurrency(runningTotal)}</span>
+            <span className="font-bold font-mono">{formatCurrency(runningTotal, currency)}</span>
           </div>
         </div>
 
@@ -623,47 +667,109 @@ function PaymentModal({
   open,
   onClose,
   invoice,
+  currency,
   onSubmit,
   loading,
 }: {
   open: boolean
   onClose: () => void
   invoice: Invoice | null
+  currency: string
   onSubmit: (data: CreatePaymentInput) => void
   loading: boolean
 }) {
+  if (!open || !invoice) return null
+
+  return (
+    <Modal open={open} onClose={onClose} title="Record Payment">
+      <PaymentForm
+        key={invoice.id}
+        invoice={invoice}
+        currency={currency}
+        onSubmit={onSubmit}
+        loading={loading}
+        onCancel={onClose}
+      />
+    </Modal>
+  )
+}
+
+function PaymentForm({
+  invoice,
+  currency,
+  onSubmit,
+  loading,
+  onCancel,
+}: {
+  invoice: Invoice
+  currency: string
+  onSubmit: (data: CreatePaymentInput) => void
+  loading: boolean
+  onCancel: () => void
+}) {
+  const invoiceTotal = Number(invoice.amount)
+  const paidSoFar = Number(invoice.paid_amount ?? 0)
+  const balanceDue = Number(invoice.balance_due ?? invoiceTotal - paidSoFar)
   const [formData, setFormData] = useState<CreatePaymentInput>({
-    amount: 0,
+    amount: balanceDue > 0 ? balanceDue : 0,
     payment_method: 'bank_transfer',
     reference: '',
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
     onSubmit(formData)
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Record Payment">
-      {invoice && (
-        <div className="mb-4 p-3 rounded-lg bg-secondary border border-border">
-          <p className="text-xs text-muted-foreground mb-0.5">Invoice Amount</p>
-          <p className="text-lg font-bold font-mono tabular-nums">
-            {formatCurrency(invoice.amount)}
+    <>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-border bg-secondary p-3">
+          <p className="mb-0.5 text-xs text-muted-foreground">Total</p>
+          <p className="font-mono text-lg font-bold tabular-nums">
+            {formatCurrency(invoice.amount, currency)}
           </p>
         </div>
-      )}
+        <div className="rounded-lg border border-border bg-secondary p-3">
+          <p className="mb-0.5 text-xs text-muted-foreground">Paid</p>
+          <p className="font-mono text-lg font-bold tabular-nums">
+            {formatCurrency(paidSoFar, currency)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-secondary p-3">
+          <p className="mb-0.5 text-xs text-muted-foreground">Balance</p>
+          <p className="font-mono text-lg font-bold tabular-nums">
+            {formatCurrency(balanceDue, currency)}
+          </p>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Payment Amount</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Payment Amount</label>
+            {balanceDue > 0 && (
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto px-0 text-xs"
+                onClick={() => setFormData((current) => ({ ...current, amount: balanceDue }))}
+              >
+                Pay remaining
+              </Button>
+            )}
+          </div>
           <Input
             type="number"
             step="0.01"
             min="0"
+            max={balanceDue}
             value={formData.amount || ''}
-            onChange={(e) =>
-              setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })
+            onChange={(event) =>
+              setFormData({
+                ...formData,
+                amount: Math.min(parseFloat(event.target.value) || 0, balanceDue),
+              })
             }
             placeholder="0.00"
             className="font-mono"
@@ -680,8 +786,8 @@ function PaymentModal({
               { value: 'check', label: 'Check' },
             ]}
             value={formData.payment_method}
-            onChange={(e) =>
-              setFormData({ ...formData, payment_method: e.target.value })
+            onChange={(event) =>
+              setFormData({ ...formData, payment_method: event.target.value })
             }
           />
         </div>
@@ -690,15 +796,15 @@ function PaymentModal({
           <label className="text-sm font-medium">Reference</label>
           <Input
             value={formData.reference || ''}
-            onChange={(e) =>
-              setFormData({ ...formData, reference: e.target.value })
+            onChange={(event) =>
+              setFormData({ ...formData, reference: event.target.value })
             }
             placeholder="Payment reference (optional)"
           />
         </div>
 
         <div className="flex justify-end gap-2.5 pt-3">
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button type="submit" disabled={loading || formData.amount <= 0}>
@@ -706,7 +812,7 @@ function PaymentModal({
           </Button>
         </div>
       </form>
-    </Modal>
+    </>
   )
 }
 
@@ -714,14 +820,16 @@ function InvoiceDetailsDrawer({
   open,
   onClose,
   invoiceId,
+  currency,
   onResend,
 }: {
   open: boolean
   onClose: () => void
   invoiceId: string | null
+  currency: string
   onResend: (id: string) => void
 }) {
-  const { success } = useToast()
+  const { success, error: showError } = useToast()
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', invoiceId],
@@ -733,6 +841,26 @@ function InvoiceDetailsDrawer({
     queryKey: ['invoice-payments', invoiceId],
     queryFn: () => invoicesApi.getPayments(invoiceId!),
     enabled: open && Boolean(invoiceId),
+  })
+
+  const downloadPdfMutation = useMutation({
+    mutationFn: (id: string) => invoicesApi.downloadPdf(id),
+    onSuccess: (blob) => {
+      if (!invoice) return
+      downloadBlob(blob, `invoice_${invoice.invoice_number || invoice.id}.pdf`)
+      success('Invoice PDF downloaded')
+    },
+    onError: (err: unknown) => showError(getErrorMessage(err)),
+  })
+
+  const downloadReceiptMutation = useMutation({
+    mutationFn: ({ invoiceId, paymentId }: { invoiceId: string; paymentId: string }) =>
+      invoicesApi.downloadReceipt(invoiceId, paymentId),
+    onSuccess: (blob, variables) => {
+      downloadBlob(blob, `receipt_${variables.paymentId}.pdf`)
+      success('Receipt downloaded')
+    },
+    onError: (err: unknown) => showError(getErrorMessage(err)),
   })
 
   if (!open || !invoiceId) return null
@@ -782,10 +910,10 @@ function InvoiceDetailsDrawer({
                       <td className="py-2">{item.description}</td>
                       <td className="py-2 text-right font-mono">{item.quantity}</td>
                       <td className="py-2 text-right font-mono">
-                        {formatCurrency(item.unit_price)}
+                        {formatCurrency(item.unit_price, currency)}
                       </td>
                       <td className="py-2 text-right font-mono">
-                        {formatCurrency(item.line_total ?? 0)}
+                        {formatCurrency(item.line_total ?? 0, currency)}
                       </td>
                     </tr>
                   ))}
@@ -794,15 +922,27 @@ function InvoiceDetailsDrawer({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-4 rounded-lg bg-secondary border border-border">
-              <p className="text-xs text-muted-foreground mb-0.5">Amount</p>
-              <p className="text-xl font-bold font-mono tabular-nums">
-                {formatCurrency(invoice.amount)}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-border bg-secondary p-4">
+              <p className="mb-0.5 text-xs text-muted-foreground">Total</p>
+              <p className="font-mono text-xl font-bold tabular-nums">
+                {formatCurrency(invoice.amount, currency)}
               </p>
             </div>
-            <div className="p-4 rounded-lg bg-secondary border border-border">
-              <p className="text-xs text-muted-foreground mb-0.5">Due Date</p>
+            <div className="rounded-lg border border-border bg-secondary p-4">
+              <p className="mb-0.5 text-xs text-muted-foreground">Paid</p>
+              <p className="font-mono text-xl font-bold tabular-nums">
+                {formatCurrency(invoice.paid_amount ?? 0, currency)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-secondary p-4">
+              <p className="mb-0.5 text-xs text-muted-foreground">Balance</p>
+              <p className="font-mono text-xl font-bold tabular-nums">
+                {formatCurrency(invoice.balance_due ?? invoice.amount, currency)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-secondary p-4">
+              <p className="mb-0.5 text-xs text-muted-foreground">Due Date</p>
               <p className="text-lg font-semibold">
                 {invoice.due_date
                   ? format(new Date(invoice.due_date), 'MMM d, yyyy')
@@ -828,25 +968,27 @@ function InvoiceDetailsDrawer({
                     className="flex items-center justify-between p-3 rounded-lg border border-border text-sm"
                   >
                     <div>
-                      <p className="font-mono">{formatCurrency(payment.amount)}</p>
+                      <p className="font-mono">{formatCurrency(payment.amount, currency)}</p>
                       <p className="text-xs text-muted-foreground">
                         {format(new Date(payment.payment_date), 'MMM d, yyyy')} ·{' '}
                         {payment.payment_method}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        invoicesApi
-                          .downloadReceipt(invoice.id, payment.id)
-                          .then((blob) => {
-                            downloadBlob(blob, `receipt_${payment.id}.pdf`)
+                    <Tooltip label="Download receipt PDF">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={downloadReceiptMutation.isPending}
+                        onClick={() =>
+                          downloadReceiptMutation.mutate({
+                            invoiceId: invoice.id,
+                            paymentId: payment.id,
                           })
-                      }}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
+                        }
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </Tooltip>
                   </div>
                 ))}
               </div>
@@ -856,18 +998,12 @@ function InvoiceDetailsDrawer({
           <div className="flex flex-wrap gap-2.5 pt-3 border-t border-border">
             <Button
               variant="outline"
-              className="flex-1 min-w-[140px]"
-              onClick={() => {
-                invoicesApi.downloadPdf(invoice.id).then((blob) => {
-                  downloadBlob(
-                    blob,
-                    `invoice_${invoice.invoice_number || invoice.id}.pdf`
-                  )
-                })
-              }}
+              className="min-w-[140px] flex-1"
+              disabled={downloadPdfMutation.isPending}
+              onClick={() => downloadPdfMutation.mutate(invoice.id)}
             >
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
+              <Download className="mr-2 h-4 w-4" />
+              {downloadPdfMutation.isPending ? 'Downloading…' : 'Download PDF'}
             </Button>
             {invoice.share_token && (
               <Button

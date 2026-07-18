@@ -1,20 +1,35 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { Download, FileText } from 'lucide-react'
 import { format } from 'date-fns'
 import { Button, Badge, getStatusBadgeVariant } from '@/components/ui'
+import { useToast } from '@/hooks/useToast'
 import { publicInvoicesApi } from '@/services/public'
 import { formatCurrency } from '@/lib/utils'
 import { downloadBlob } from '@/lib/download'
+import { getErrorMessage } from '@/lib/axios'
 
 export function PublicInvoicePage() {
   const { token } = useParams<{ token: string }>()
+  const { success, error } = useToast()
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['public-invoice', token],
     queryFn: () => publicInvoicesApi.get(token!),
     enabled: Boolean(token),
     retry: false,
+  })
+
+  const downloadPdfMutation = useMutation({
+    mutationFn: () => publicInvoicesApi.downloadPdf(token!),
+    onSuccess: (blob) => {
+      downloadBlob(
+        blob,
+        `invoice_${data?.invoice_number ?? token}.pdf`
+      )
+      success('Invoice PDF downloaded')
+    },
+    onError: (err: unknown) => error(getErrorMessage(err)),
   })
 
   if (isLoading) {
@@ -141,14 +156,11 @@ export function PublicInvoicePage() {
         <Button
           variant="outline"
           className="border-[var(--color-document-border)]"
-          onClick={() => {
-            publicInvoicesApi.downloadPdf(token!).then((blob) => {
-              downloadBlob(blob, `invoice_${data.invoice_number ?? token}.pdf`)
-            })
-          }}
+          disabled={downloadPdfMutation.isPending}
+          onClick={() => downloadPdfMutation.mutate()}
         >
           <Download className="h-4 w-4 mr-2" />
-          Download PDF
+          {downloadPdfMutation.isPending ? 'Downloading…' : 'Download PDF'}
         </Button>
       </div>
     </div>

@@ -44,24 +44,25 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: 'spring', duration: 0.3 }}
             className={cn(
-              'relative z-50 w-full max-w-lg rounded-xl border border-border glass-card p-6 shadow-2xl',
+              'relative z-50 flex max-h-[min(90vh,calc(100vh-2rem))] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-border glass-card shadow-2xl',
               className
             )}
           >
             {title && (
-              <div className="mb-4 flex items-center justify-between">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card/95 px-6 py-4 backdrop-blur">
                 <h2 className="text-xl font-semibold">{title}</h2>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={onClose}
                   className="h-8 w-8 rounded-full"
+                  aria-label="Close dialog"
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             )}
-            {children}
+            <div className="overflow-y-auto px-6 py-4">{children}</div>
           </motion.div>
         </div>
       )}

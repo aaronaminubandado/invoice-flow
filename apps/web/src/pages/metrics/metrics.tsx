@@ -27,7 +27,8 @@ import {
   Skeleton,
   ExportDropdown,
 } from '@/components/ui'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/hooks/useToast'
+import { useSettings } from '@/hooks/useSettings'
 import { metricsApi } from '@/services'
 import { formatCurrency } from '@/lib/utils'
 import { downloadBlob, FILE_EXTENSIONS, type ExportFormat } from '@/lib/download'
@@ -36,6 +37,7 @@ const COLORS = ['#0f766e', '#d97706', '#dc4a4a', '#22a06b']
 
 export function MetricsPage() {
   const { success, error } = useToast()
+  const { currency } = useSettings()
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['revenue-summary'],
@@ -131,7 +133,7 @@ export function MetricsPage() {
                   <Skeleton className="h-9 w-24" />
                 ) : (
                   <span className="text-2xl font-bold font-mono tabular-nums">
-                    {stat.value ? formatCurrency(stat.value) : '$0'}
+                    {stat.value ? formatCurrency(stat.value, currency) : formatCurrency('0', currency)}
                   </span>
                 )}
               </CardContent>
@@ -200,7 +202,7 @@ export function MetricsPage() {
                                   {entry.name}
                                 </span>
                                 <span className="font-mono tabular-nums font-medium">
-                                  {formatCurrency(entry.value as number)}
+                                  {formatCurrency(entry.value as number, currency)}
                                 </span>
                               </div>
                             ))}
@@ -275,7 +277,7 @@ export function MetricsPage() {
                               {payload[0].name}
                             </p>
                             <p className="font-mono tabular-nums text-sm">
-                              {formatCurrency(payload[0].value as number)}
+                              {formatCurrency(payload[0].value as number, currency)}
                             </p>
                           </div>
                         )

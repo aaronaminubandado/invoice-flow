@@ -1,38 +1,45 @@
-import { api } from '@/lib/axios'
-import { Client, CreateClientInput, PaginatedResponse } from '@/types'
-import type { ExportFormat } from '@/lib/download'
+import { api } from "@/lib/axios";
+import { Client, CreateClientInput, PaginatedResponse } from "@/types";
+import type { ExportFormat } from "@/lib/download";
 
 export const clientsApi = {
-  list: async (params?: { limit?: number; offset?: number }) => {
-    const { data } = await api.get<PaginatedResponse<Client>>('/clients', {
-      params,
-    })
-    return data
-  },
+	list: async (params?: { limit?: number; offset?: number }) => {
+		const { data } = await api.get<PaginatedResponse<Client>>("/clients", {
+			params,
+		});
+		return data;
+	},
 
-  get: async (id: string) => {
-    const { data } = await api.get<Client>(`/clients/${id}`)
-    return data
-  },
+	search: async (query: string) => {
+		const { data } = await api.get<Client[]>("/clients/search", {
+			params: { q: query },
+		});
+		return data;
+	},
 
-  create: async (input: CreateClientInput) => {
-    const { data } = await api.post<Client>('/clients', input)
-    return data
-  },
+	get: async (id: string) => {
+		const { data } = await api.get<Client>(`/clients/${id}`);
+		return data;
+	},
 
-  update: async (id: string, input: Partial<CreateClientInput>) => {
-    const { data } = await api.put<Client>(`/clients/${id}`, input)
-    return data
-  },
+	create: async (input: CreateClientInput) => {
+		const { data } = await api.post<Client>("/clients", input);
+		return data;
+	},
 
-  delete: async (id: string) => {
-    await api.delete(`/clients/${id}`)
-  },
+	update: async (id: string, input: Partial<CreateClientInput>) => {
+		const { data } = await api.put<Client>(`/clients/${id}`, input);
+		return data;
+	},
 
-  export: async (format: ExportFormat = 'csv') => {
-    const response = await api.get(`/clients/export?format=${format}`, {
-      responseType: 'blob',
-    })
-    return response.data
-  },
-}
+	delete: async (id: string) => {
+		await api.delete(`/clients/${id}`);
+	},
+
+	export: async (format: ExportFormat = "csv") => {
+		const response = await api.get(`/clients/export?format=${format}`, {
+			responseType: "blob",
+		});
+		return response.data;
+	},
+};

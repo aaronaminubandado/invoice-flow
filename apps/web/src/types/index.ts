@@ -35,6 +35,8 @@ export interface Invoice {
   created_at: string
   invoice_number?: string
   share_token?: string
+  paid_amount?: string
+  balance_due?: string
   items?: InvoiceItem[]
 }
 
