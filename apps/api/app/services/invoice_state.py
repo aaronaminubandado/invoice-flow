@@ -26,7 +26,7 @@ TRANSITIONS = {
         InvoiceStatus.PARTIAL,
         InvoiceStatus.CANCELLED,
     ],
-    InvoiceStatus.OVERDUE: [InvoiceStatus.PAID, InvoiceStatus.PARTIAL],
+    InvoiceStatus.OVERDUE: [InvoiceStatus.PAID, InvoiceStatus.PARTIAL, InvoiceStatus.CANCELLED],
     InvoiceStatus.PAID: [],
     InvoiceStatus.PARTIAL: [InvoiceStatus.PAID, InvoiceStatus.OVERDUE],
     InvoiceStatus.CANCELLED: [],
@@ -55,18 +55,37 @@ def get_allowed_transitions(from_status: str) -> list[str]:
 
 
 def validate_transition(from_status: str, to_status: str) -> tuple[bool, Optional[str]]:
-    if not can_transition(from_status, to_status):
-        allowed = get_allowed_transitions(from_status)
-        if allowed:
-            return (
-                False,
-                f"Invalid transition from '{from_status}' to '{to_status}'. Allowed: {allowed}",
-            )
-        return (
-            False,
-            f"Invalid transition from '{from_status}' to '{to_status}'. No transitions allowed from '{from_status}'.",
-        )
-    return True, None
+    if can_transition(from_status, to_status):
+        return True, None
+
+    friendly_messages = {
+        ("draft", "paid"): "Draft invoices must be sent before they can be paid.",
+        ("draft", "partial"): "Draft invoices must be sent before recording payments.",
+        ("draft", "overdue"): "Draft invoices must be sent before they can become overdue.",
+        ("sent", "draft"): "Sent invoices cannot be moved back to draft.",
+        ("paid", "cancelled"): "Paid invoices cannot be cancelled.",
+        ("paid", "sent"): "Paid invoices cannot be changed back to sent.",
+        ("paid", "partial"): "Paid invoices cannot be marked as partially paid.",
+        ("paid", "overdue"): "Paid invoices cannot be marked as overdue.",
+        ("partial", "sent"): "Partially paid invoices cannot be moved back to sent.",
+        ("partial", "draft"): "Partially paid invoices cannot be moved back to draft.",
+        ("cancelled", "paid"): "Cancelled invoices cannot be marked as paid.",
+        ("cancelled", "sent"): "Cancelled invoices cannot be sent again.",
+        ("cancelled", "partial"): "Cancelled invoices cannot receive payments.",
+        ("void", "paid"): "Void invoices cannot be marked as paid.",
+        ("void", "cancelled"): "Void invoices cannot be cancelled.",
+    }
+
+    message = friendly_messages.get((from_status, to_status))
+    if message:
+        return False, message
+
+    if to_status == "paid":
+        return False, "This invoice cannot be marked as paid in its current status."
+    if to_status == "cancelled":
+        return False, "This invoice cannot be cancelled in its current status."
+
+    return False, "This action is not allowed for the current invoice status."
 
 
 def is_terminal_status(status: str) -> bool:
