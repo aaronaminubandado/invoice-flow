@@ -32,6 +32,6 @@ export function buildOnboardingSteps(
   ]
 }
 
-export function shouldShowOnboarding(invoiceCount: number): boolean {
-  return invoiceCount === 0
+export function shouldShowOnboarding(steps: OnboardingStep[]): boolean {
+  return steps.some((step) => !step.done)
 }

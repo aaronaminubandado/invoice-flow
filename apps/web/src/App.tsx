@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MainLayout } from '@/components/layout'
@@ -6,12 +7,35 @@ import { ThemeProvider } from '@/contexts/theme'
 import { useSession } from '@/hooks/useSession'
 import { LoginPage } from '@/pages/auth/login'
 import { RegisterPage } from '@/pages/auth/register'
-import { DashboardPage } from '@/pages/dashboard/dashboard'
-import { InvoicesPage } from '@/pages/invoices/invoices'
-import { ClientsPage } from '@/pages/clients/clients'
-import { MetricsPage } from '@/pages/metrics/metrics'
-import { SettingsPage } from '@/pages/settings/settings'
+import { ForgotPasswordPage } from '@/pages/auth/forgot-password'
+import { ResetPasswordPage } from '@/pages/auth/reset-password'
 import { PublicInvoicePage } from '@/pages/public/invoice-view'
+
+const DashboardPage = lazy(() =>
+  import('@/pages/dashboard/dashboard').then((module) => ({
+    default: module.DashboardPage,
+  }))
+)
+const InvoicesPage = lazy(() =>
+  import('@/pages/invoices/invoices').then((module) => ({
+    default: module.InvoicesPage,
+  }))
+)
+const ClientsPage = lazy(() =>
+  import('@/pages/clients/clients').then((module) => ({
+    default: module.ClientsPage,
+  }))
+)
+const MetricsPage = lazy(() =>
+  import('@/pages/metrics/metrics').then((module) => ({
+    default: module.MetricsPage,
+  }))
+)
+const SettingsPage = lazy(() =>
+  import('@/pages/settings/settings').then((module) => ({
+    default: module.SettingsPage,
+  }))
+)
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,6 +82,14 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function RouteFallback() {
+  return (
+    <div className="min-h-[40vh] flex items-center justify-center">
+      <span className="text-muted-foreground text-sm">Loading...</span>
+    </div>
+  )
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -83,17 +115,61 @@ function App() {
                 }
               />
               <Route
+                path="/forgot-password"
+                element={
+                  <PublicRoute>
+                    <ForgotPasswordPage />
+                  </PublicRoute>
+                }
+              />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route
                 element={
                   <ProtectedRoute>
                     <MainLayout />
                   </ProtectedRoute>
                 }
               >
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/invoices" element={<InvoicesPage />} />
-                <Route path="/clients" element={<ClientsPage />} />
-                <Route path="/metrics" element={<MetricsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <Suspense fallback={<RouteFallback />}>
+                      <DashboardPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/invoices"
+                  element={
+                    <Suspense fallback={<RouteFallback />}>
+                      <InvoicesPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/clients"
+                  element={
+                    <Suspense fallback={<RouteFallback />}>
+                      <ClientsPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/metrics"
+                  element={
+                    <Suspense fallback={<RouteFallback />}>
+                      <MetricsPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <Suspense fallback={<RouteFallback />}>
+                      <SettingsPage />
+                    </Suspense>
+                  }
+                />
               </Route>
 
               <Route path="/" element={<Navigate to="/dashboard" replace />} />

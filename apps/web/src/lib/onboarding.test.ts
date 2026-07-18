@@ -9,8 +9,11 @@ describe('onboarding', () => {
     expect(steps[2].done).toBe(false)
   })
 
-  it('hides checklist when invoices exist', () => {
-    expect(shouldShowOnboarding(0)).toBe(true)
-    expect(shouldShowOnboarding(3)).toBe(false)
+  it('hides checklist when every step is complete', () => {
+    const incomplete = buildOnboardingSteps(false, 0, 0)
+    const complete = buildOnboardingSteps(true, 2, 3)
+
+    expect(shouldShowOnboarding(incomplete)).toBe(true)
+    expect(shouldShowOnboarding(complete)).toBe(false)
   })
 })
