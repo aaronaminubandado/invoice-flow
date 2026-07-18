@@ -10,7 +10,6 @@ apps/
   web/     React SPA (Vite)
 packages/
   api-types/   TypeScript types generated from the API OpenAPI spec
-review/        Architecture review and ticket backlog
 ```
 
 ## Quick start
@@ -50,3 +49,27 @@ npm run generate:api-types
 ## Migrations
 
 Run SQL files in `apps/api/migrations/` in numeric order against PostgreSQL.
+
+## Local quality checks
+
+Backend tests always use `TEST_DATABASE_URL`; they will never fall back to the
+development or production database. With PostgreSQL running:
+
+```bash
+cd apps/api
+source venv/bin/activate
+export TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/invoiceflow_test
+bash scripts/test_backend.sh
+```
+
+The script applies every migration, runs Ruff, and then runs pytest. It is safe
+to run repeatedly.
+
+Frontend checks:
+
+```bash
+cd apps/web
+npm run lint
+npm test
+npm run build
+```

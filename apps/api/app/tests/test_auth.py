@@ -10,8 +10,8 @@ from app.core import security
 
 
 @pytest.mark.asyncio
-async def test_invalid_token(client):
-    response = await client.get(
+async def test_invalid_token(unauthenticated_client):
+    response = await unauthenticated_client.get(
         "/dashboard/stats",
         headers={"Authorization": "Bearer invalidtoken"},
     )
