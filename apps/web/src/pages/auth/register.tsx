@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FileText, Mail, Lock, User, ArrowRight } from 'lucide-react'
-import { Button, Input } from '@/components/ui'
+import { Button, Input, PasswordInput } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 
 export function RegisterPage() {
@@ -32,8 +32,8 @@ export function RegisterPage() {
       } else {
         navigate('/login')
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create account')
     } finally {
       setLoading(false)
     }
@@ -110,9 +110,8 @@ export function RegisterPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="password"
+                <Lock className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <PasswordInput
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

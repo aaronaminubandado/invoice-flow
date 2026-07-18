@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useTheme } from '@/contexts/theme'
+import { useTheme } from '@/hooks/useTheme'
 import { supabase } from '@/lib/supabase'
 import { LogoMark } from '@/components/brand/logo-mark'
 import { Button } from '@/components/ui'
@@ -84,14 +84,14 @@ export function Sidebar({
               showExpanded ? 'justify-between' : 'justify-center'
             )}
           >
-            <div className={cn('flex items-center gap-2.5', !showExpanded && 'justify-center')}>
-              <LogoMark className="h-8 w-8 shrink-0" />
-              {showExpanded && (
+            {showExpanded && (
+              <div className="flex items-center gap-2.5">
+                <LogoMark className="h-8 w-8 shrink-0" />
                 <span className="text-[15px] font-semibold tracking-tight">
                   InvoiceFlow
                 </span>
-              )}
-            </div>
+              </div>
+            )}
             {!isDesktop && (
               <Button variant="ghost" size="icon" onClick={onMobileClose} aria-label="Close menu">
                 <X className="h-4 w-4" />
@@ -101,7 +101,6 @@ export function Sidebar({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn(!showExpanded && 'hidden')}
                 onClick={() => onCollapse(!collapsed)}
                 aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
