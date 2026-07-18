@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     FRONTEND_ORIGIN: str | None = None
     PUBLIC_APP_URL: str = ""
     WEBHOOK_SECRET: str = ""
+    DB_CONNECT_TIMEOUT_SECONDS: float = 5.0
+    DB_POOL_TIMEOUT_SECONDS: float = 5.0
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+    DB_POOL_RECYCLE_SECONDS: int = 300
 
     class Config:
         env_file = ".env"
