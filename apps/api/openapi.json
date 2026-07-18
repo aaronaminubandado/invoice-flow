@@ -62,35 +62,6 @@
       }
     },
     "/invoices": {
-      "get": {
-        "tags": [
-          "Invoices"
-        ],
-        "summary": "List Invoices",
-        "description": "List all invoices belonging to the authenticated user.",
-        "operationId": "list_invoices_invoices_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/InvoiceOut"
-                  },
-                  "type": "array",
-                  "title": "Response List Invoices Invoices Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      },
       "post": {
         "tags": [
           "Invoices"
@@ -98,15 +69,20 @@
         "summary": "Create Invoice",
         "description": "Create a new invoice for a client owned by the authenticated user.",
         "operationId": "create_invoice_invoices_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/InvoiceCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -129,12 +105,83 @@
               }
             }
           }
-        },
+        }
+      },
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "List Invoices",
+        "description": "List invoices belonging to the authenticated user with pagination.",
+        "operationId": "list_invoices_invoices_get",
         "security": [
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/invoices/{invoice_id}": {
@@ -475,6 +522,55 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices/{invoice_id}/send": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Send Invoice",
+        "description": "Transition a draft invoice to sent and email the client.",
+        "operationId": "send_invoice_invoices__invoice_id__send_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
               }
             }
           },
@@ -1013,35 +1109,6 @@
       }
     },
     "/clients": {
-      "get": {
-        "tags": [
-          "Clients"
-        ],
-        "summary": "List Clients",
-        "description": "List all clients belonging to the authenticated user.",
-        "operationId": "list_clients_clients_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ClientResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Clients Clients Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      },
       "post": {
         "tags": [
           "Clients"
@@ -1049,15 +1116,20 @@
         "summary": "Create Client",
         "description": "Create a new client owned by the authenticated user.",
         "operationId": "create_client_clients_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ClientCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1080,12 +1152,67 @@
               }
             }
           }
-        },
+        }
+      },
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "List Clients",
+        "description": "List clients belonging to the authenticated user with pagination.",
+        "operationId": "list_clients_clients_get",
         "security": [
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/clients/{client_id}": {
@@ -1471,6 +1598,22 @@
           }
         }
       }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Readiness Check",
+        "operationId": "readiness_check_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1726,6 +1869,27 @@
         ],
         "title": "ClientCreate"
       },
+      "ClientListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClientResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ClientListOut"
+      },
       "ClientResponse": {
         "properties": {
           "id": {
@@ -1895,6 +2059,11 @@
               }
             ],
             "title": "Items"
+          },
+          "send_now": {
+            "type": "boolean",
+            "title": "Send Now",
+            "default": true
           }
         },
         "type": "object",
@@ -1986,6 +2155,27 @@
           "line_total"
         ],
         "title": "InvoiceItemOut"
+      },
+      "InvoiceListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "InvoiceListOut"
       },
       "InvoiceOut": {
         "properties": {
@@ -2105,6 +2295,18 @@
               }
             ],
             "title": "Share Token"
+          },
+          "paid_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Paid Amount",
+            "default": "0"
+          },
+          "balance_due": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Due",
+            "default": "0"
           },
           "items": {
             "items": {

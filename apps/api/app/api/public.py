@@ -87,11 +87,27 @@ async def get_public_invoice_pdf(
     db: AsyncSession = Depends(get_db),
 ):
     data = await _load_public_invoice(db, share_token)
+
+    paid_result = await db.execute(
+        text("""
+            SELECT COALESCE(SUM(amount), 0) AS paid
+            FROM payments WHERE invoice_id = :invoice_id
+        """),
+        {"invoice_id": data["id"]},
+    )
+    paid_row = paid_result.first()
+    paid_amount = Decimal(str(dict(paid_row._mapping)["paid"]))
+    total = Decimal(str(data["amount"]))
+    balance_due = max(total - paid_amount, Decimal("0"))
+
     business_info = await get_business_settings(db, data["user_id"])
     items = await fetch_invoice_items(db, data["id"])
 
     client_row = await db.execute(
-        text("SELECT name, email, address FROM clients c JOIN invoices i ON i.client_id = c.id WHERE i.id = :id"),
+        text(
+            "SELECT name, email, address FROM clients c "
+            "JOIN invoices i ON i.client_id = c.id WHERE i.id = :id"
+        ),
         {"id": data["id"]},
     )
     client = dict(client_row.first()._mapping)
@@ -99,7 +115,7 @@ async def get_public_invoice_pdf(
     pdf_bytes = PDFService.generate_invoice_pdf(
         invoice_id=str(data["id"]),
         invoice_number=data.get("invoice_number"),
-        amount=Decimal(str(data["amount"])),
+        amount=total,
         description=data.get("description") or "",
         due_date=data["due_date"],
         status=data["status"],
@@ -109,6 +125,8 @@ async def get_public_invoice_pdf(
         created_at=data.get("created_at"),
         business_info=business_info,
         items=items,
+        paid_amount=paid_amount,
+        balance_due=balance_due,
     )
 
     filename = f"invoice_{data.get('invoice_number') or share_token[:8]}.pdf"

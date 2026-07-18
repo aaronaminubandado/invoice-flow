@@ -1,6 +1,9 @@
 import pytest
 from decimal import Decimal
 from datetime import date
+from uuid import uuid4
+
+from sqlalchemy import text
 
 
 def test_generate_invoice_pdf():
@@ -64,3 +67,88 @@ def test_generate_invoice_pdf_without_number():
     assert pdf_bytes is not None
     assert len(pdf_bytes) > 0
     assert pdf_bytes[:4] == b"%PDF"
+
+
+def test_generate_invoice_pdf_with_balance_due():
+    from app.services.pdf import PDFService
+
+    pdf_bytes = PDFService.generate_invoice_pdf(
+        invoice_id="test-789",
+        invoice_number="INV-002",
+        amount=Decimal("1000.00"),
+        description="Test services",
+        due_date=date(2026, 3, 1),
+        status="partial",
+        client_name="John Doe",
+        client_email="john@example.com",
+        created_at=date(2026, 2, 1),
+        paid_amount=Decimal("400.00"),
+        balance_due=Decimal("600.00"),
+    )
+
+    assert pdf_bytes is not None
+    assert len(pdf_bytes) > 0
+    assert pdf_bytes[:4] == b"%PDF"
+
+
+def test_generate_metrics_report_pdf():
+    from app.services.pdf import PDFService
+
+    pdf_bytes = PDFService.generate_metrics_report_pdf(
+        summary={
+            "total_revenue": "1000.00",
+            "total_paid": "400.00",
+            "total_outstanding": "600.00",
+            "total_overdue": "0.00",
+        },
+        monthly_rows=[
+            {"month": "2026-01", "paid": "400.00", "outstanding": "600.00"},
+        ],
+    )
+
+    assert pdf_bytes is not None
+    assert len(pdf_bytes) > 0
+    assert pdf_bytes[:4] == b"%PDF"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("address", ["42 Ledger Lane", None])
+async def test_invoice_pdf_endpoint(client, db_session, user_id, address):
+    client_id = uuid4()
+    invoice_id = uuid4()
+    await db_session.execute(
+        text("""
+            INSERT INTO clients (id, user_id, name, email, address)
+            VALUES (:client_id, :user_id, 'PDF Client', 'pdf@example.com', :address)
+        """),
+        {
+            "client_id": client_id,
+            "user_id": user_id,
+            "address": address,
+        },
+    )
+    await db_session.execute(
+        text("""
+            INSERT INTO invoices (
+                id, user_id, client_id, amount, due_date, status, invoice_number
+            )
+            VALUES (
+                :invoice_id, :user_id, :client_id, 250.00,
+                CURRENT_DATE, 'sent', :invoice_number
+            )
+        """),
+        {
+            "invoice_id": invoice_id,
+            "user_id": user_id,
+            "client_id": client_id,
+            "invoice_number": f"INV-{str(invoice_id)[:8]}",
+        },
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/invoices/{invoice_id}/pdf")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment; filename=invoice_" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")

@@ -69,6 +69,48 @@ async def test_revenue_summary_with_invoices(client, db_session, user_id):
 
 
 @pytest.mark.asyncio
+async def test_revenue_summary_uses_payment_totals_for_partial(client, db_session, user_id):
+    client_id = uuid4()
+    invoice_id = uuid4()
+
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO clients (id, user_id, name, email)
+            VALUES (:client_id, :user_id, 'Test Client', 'test@example.com')
+            """
+        ),
+        {"client_id": client_id, "user_id": user_id},
+    )
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO invoices (id, user_id, client_id, amount, due_date, status)
+            VALUES (:invoice_id, :user_id, :client_id, 1000.00, CURRENT_DATE, 'partial')
+            """
+        ),
+        {"invoice_id": invoice_id, "user_id": user_id, "client_id": client_id},
+    )
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO payments (invoice_id, amount, payment_method, payment_date)
+            VALUES (:invoice_id, 400.00, 'bank_transfer', CURRENT_DATE)
+            """
+        ),
+        {"invoice_id": invoice_id},
+    )
+    await db_session.commit()
+
+    response = await client.get("/metrics/revenue-summary")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_paid"] == "400.00"
+    assert data["total_outstanding"] == "600.00"
+
+
+@pytest.mark.asyncio
 async def test_monthly_revenue_empty(client, db_session, user_id):
     """Test monthly revenue with no invoices"""
     response = await client.get("/metrics/monthly-revenue")

@@ -4,10 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from uuid import UUID
 from typing import Optional
+from decimal import Decimal
 
 from app.deps import get_current_user
 from app.core.database import get_db
 from app.services.export import generate_csv, generate_xlsx, generate_pdf_table
+from app.services.pdf import PDFService
 
 router = APIRouter(prefix="/metrics", tags=["Metrics"])
 
@@ -21,6 +23,59 @@ METRICS_HEADERS = [
     "Outstanding Invoices",
 ]
 
+PAYMENT_TOTALS_JOIN = """
+    LEFT JOIN (
+        SELECT invoice_id, SUM(amount) AS paid
+        FROM payments
+        GROUP BY invoice_id
+    ) p ON p.invoice_id = i.id
+"""
+
+REVENUE_SUMMARY_SQL = f"""
+    SELECT
+        COALESCE(SUM(i.amount), 0)::NUMERIC(12,2) AS total_revenue,
+        COALESCE(SUM(COALESCE(p.paid, 0)), 0)::NUMERIC(12,2) AS total_paid,
+        COALESCE(
+            SUM(
+                GREATEST(i.amount - COALESCE(p.paid, 0), 0)
+            ) FILTER (
+                WHERE i.status IN ('sent', 'overdue', 'partial')
+            ),
+            0
+        )::NUMERIC(12,2) AS total_outstanding,
+        COALESCE(
+            SUM(
+                GREATEST(i.amount - COALESCE(p.paid, 0), 0)
+            ) FILTER (WHERE i.status = 'overdue'),
+            0
+        )::NUMERIC(12,2) AS total_overdue
+    FROM invoices i
+    {PAYMENT_TOTALS_JOIN}
+    WHERE i.user_id = :uid
+      AND i.status NOT IN ('cancelled', 'void')
+"""
+
+MONTHLY_REVENUE_SQL = f"""
+    SELECT
+        TO_CHAR(DATE_TRUNC('month', i.created_at), 'YYYY-MM') AS month,
+        COALESCE(SUM(COALESCE(p.paid, 0)), 0)::NUMERIC(12,2) AS paid,
+        COALESCE(
+            SUM(
+                GREATEST(i.amount - COALESCE(p.paid, 0), 0)
+            ) FILTER (
+                WHERE i.status IN ('sent', 'overdue', 'partial')
+            ),
+            0
+        )::NUMERIC(12,2) AS outstanding
+    FROM invoices i
+    {PAYMENT_TOTALS_JOIN}
+    WHERE i.user_id = :uid
+      AND i.status NOT IN ('cancelled', 'void')
+      AND i.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '12 months'
+    GROUP BY DATE_TRUNC('month', i.created_at)
+    ORDER BY month DESC
+"""
+
 
 @router.get("/revenue-summary")
 async def revenue_summary(
@@ -29,15 +84,7 @@ async def revenue_summary(
 ):
     """Get revenue summary metrics."""
     result = await db.execute(
-        text("""
-            SELECT
-                COALESCE(SUM(amount), 0)::NUMERIC(12,2) AS total_revenue,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0)::NUMERIC(12,2) AS total_paid,
-                COALESCE(SUM(amount) FILTER (WHERE status IN ('sent', 'overdue', 'partial')), 0)::NUMERIC(12,2) AS total_outstanding,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'overdue'), 0)::NUMERIC(12,2) AS total_overdue
-            FROM invoices
-            WHERE user_id = :uid
-        """),
+        text(REVENUE_SUMMARY_SQL),
         {"uid": user_id},
     )
 
@@ -66,17 +113,7 @@ async def monthly_revenue(
 ):
     """Get monthly revenue breakdown for the last 12 months."""
     result = await db.execute(
-        text("""
-            SELECT
-                TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) AS paid,
-                COALESCE(SUM(amount) FILTER (WHERE status IN ('sent', 'overdue', 'partial')), 0) AS outstanding
-            FROM invoices
-            WHERE user_id = :uid
-              AND created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '12 months'
-            GROUP BY DATE_TRUNC('month', created_at)
-            ORDER BY month DESC
-        """),
+        text(MONTHLY_REVENUE_SQL),
         {"uid": user_id},
     )
 
@@ -94,19 +131,35 @@ async def export_metrics(
 ):
     """Export metrics summary as CSV, Excel, or PDF."""
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT
-                TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
-                COALESCE(SUM(amount), 0) AS total_invoiced,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) AS total_paid,
-                COALESCE(SUM(amount) FILTER (WHERE status IN ('sent', 'overdue', 'partial')), 0) AS total_outstanding,
-                COALESCE(SUM(amount) FILTER (WHERE status = 'overdue'), 0) AS total_overdue,
-                COUNT(*) FILTER (WHERE status = 'paid') AS paid_count,
-                COUNT(*) FILTER (WHERE status IN ('sent', 'overdue', 'partial')) AS outstanding_count
-            FROM invoices
-            WHERE user_id = :uid
-              AND created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '12 months'
-            GROUP BY DATE_TRUNC('month', created_at)
+                TO_CHAR(DATE_TRUNC('month', i.created_at), 'YYYY-MM') AS month,
+                COALESCE(SUM(i.amount), 0)::NUMERIC(12,2) AS total_invoiced,
+                COALESCE(SUM(COALESCE(p.paid, 0)), 0)::NUMERIC(12,2) AS total_paid,
+                COALESCE(
+                    SUM(
+                        GREATEST(i.amount - COALESCE(p.paid, 0), 0)
+                    ) FILTER (
+                        WHERE i.status IN ('sent', 'overdue', 'partial')
+                    ),
+                    0
+                )::NUMERIC(12,2) AS total_outstanding,
+                COALESCE(
+                    SUM(
+                        GREATEST(i.amount - COALESCE(p.paid, 0), 0)
+                    ) FILTER (WHERE i.status = 'overdue'),
+                    0
+                )::NUMERIC(12,2) AS total_overdue,
+                COUNT(*) FILTER (WHERE i.status = 'paid') AS paid_count,
+                COUNT(*) FILTER (
+                    WHERE i.status IN ('sent', 'overdue', 'partial')
+                ) AS outstanding_count
+            FROM invoices i
+            {PAYMENT_TOTALS_JOIN}
+            WHERE i.user_id = :uid
+              AND i.status NOT IN ('cancelled', 'void')
+              AND i.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '12 months'
+            GROUP BY DATE_TRUNC('month', i.created_at)
             ORDER BY month DESC
         """),
         {"uid": user_id},
@@ -145,7 +198,37 @@ async def export_metrics(
         )
 
     if format == "pdf":
-        content = generate_pdf_table(METRICS_HEADERS, rows, title="Metrics Export")
+        summary_result = await db.execute(
+            text(REVENUE_SUMMARY_SQL),
+            {"uid": user_id},
+        )
+        summary_row = summary_result.first()
+        summary = (
+            {
+                "total_revenue": str(dict(summary_row._mapping)["total_revenue"]),
+                "total_paid": str(dict(summary_row._mapping)["total_paid"]),
+                "total_outstanding": str(dict(summary_row._mapping)["total_outstanding"]),
+                "total_overdue": str(dict(summary_row._mapping)["total_overdue"]),
+            }
+            if summary_row
+            else {
+                "total_revenue": "0.00",
+                "total_paid": "0.00",
+                "total_outstanding": "0.00",
+                "total_overdue": "0.00",
+            }
+        )
+
+        monthly_result = await db.execute(
+            text(MONTHLY_REVENUE_SQL),
+            {"uid": user_id},
+        )
+        monthly_rows = [dict(row._mapping) for row in monthly_result.fetchall()]
+
+        content = PDFService.generate_metrics_report_pdf(
+            summary=summary,
+            monthly_rows=monthly_rows,
+        )
         return Response(
             content=content,
             media_type="application/pdf",

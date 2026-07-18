@@ -80,6 +80,8 @@ class InvoiceOut(BaseModel):
     created_at: datetime | None = None
     invoice_number: str | None = None
     share_token: str | None = None
+    paid_amount: Decimal = Decimal("0")
+    balance_due: Decimal = Decimal("0")
     items: list[InvoiceItemOut] = []
 
     class Config:
