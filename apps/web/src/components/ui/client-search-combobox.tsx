@@ -5,6 +5,19 @@ import { cn } from '@/lib/utils'
 import { clientsApi } from '@/services/clients'
 import type { Client } from '@/types'
 
+function filterClients(clients: Client[], query: string): Client[] {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) {
+    return clients
+  }
+
+  return clients.filter(
+    (client) =>
+      client.name.toLowerCase().includes(normalized) ||
+      client.email.toLowerCase().includes(normalized)
+  )
+}
+
 interface ClientSearchComboboxProps {
   value: string
   onChange: (clientId: string) => void
@@ -36,9 +49,15 @@ export function ClientSearchCombobox({
     queryKey: ['clients', 'search', debouncedQuery],
     queryFn: () => clientsApi.search(debouncedQuery),
     enabled: open && debouncedQuery.length > 0,
+    staleTime: 1000 * 60,
   })
 
-  const results = debouncedQuery ? searchResults : initialClients
+  const localMatches = filterClients(initialClients, debouncedQuery)
+  const results = debouncedQuery
+    ? searchResults.length > 0
+      ? searchResults
+      : localMatches
+    : initialClients
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -84,7 +103,7 @@ export function ClientSearchCombobox({
           role="listbox"
           className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
         >
-          {isFetching ? (
+          {isFetching && debouncedQuery && searchResults.length === 0 ? (
             <li className="px-3 py-2 text-sm text-muted-foreground">Searching…</li>
           ) : results.length === 0 ? (
             <li className="px-3 py-2 text-sm text-muted-foreground">No clients found</li>
