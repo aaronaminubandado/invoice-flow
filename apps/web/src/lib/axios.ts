@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios'
 import { supabase } from '@/lib/supabase'
+import { mapApiErrorDetail } from '@/lib/api-errors'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -23,17 +24,19 @@ api.interceptors.request.use(async (config) => {
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ detail?: string }>
-    if (axiosError.response?.data?.detail) {
-      return axiosError.response.data.detail
+    const status = axiosError.response?.status
+    const mapped = mapApiErrorDetail(axiosError.response?.data?.detail, status)
+    if (mapped) {
+      return mapped
     }
     if (axiosError.response?.status === 409) {
-      return 'Conflict: ' + (axiosError.response.data?.detail || 'Operation conflict')
+      return 'This action conflicts with existing data. Please refresh and try again.'
     }
     if (axiosError.response?.status === 404) {
       return 'Not found'
     }
     if (axiosError.response?.status === 400) {
-      return axiosError.response.data?.detail || 'Bad request'
+      return 'Invalid request. Please check your input and try again.'
     }
     if (axiosError.response?.status === 500) {
       return 'Server error. Please try again later.'
