@@ -127,7 +127,7 @@ async def monthly_revenue(
 async def export_metrics(
     user_id: UUID = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    format: Optional[str] = Query("csv", regex="^(csv|xlsx|pdf)$"),
+    format: Optional[str] = Query("csv", pattern="^(csv|xlsx|pdf)$"),
 ):
     """Export metrics summary as CSV, Excel, or PDF."""
     result = await db.execute(

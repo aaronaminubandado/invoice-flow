@@ -1,24 +1,15 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from decimal import Decimal
 from sqlalchemy import text
+
+from app.tests.helpers import insert_test_client, insert_test_invoice
 
 
 @pytest.mark.asyncio
 async def test_create_invoice_with_email_tracking(client, db_session, user_id):
     """Test that creating an invoice sets email_status to pending"""
-    client_id = uuid4()
-
-    await db_session.execute(
-        text(
-            """
-            INSERT INTO clients (id, user_id, name, email)
-            VALUES (:client_id, :user_id, 'Test Client', 'test@example.com')
-            """
-        ),
-        {"client_id": client_id, "user_id": user_id},
-    )
+    client_id = await insert_test_client(db_session, user_id)
     await db_session.commit()
 
     response = await client.post(
@@ -43,24 +34,14 @@ async def test_get_email_status_endpoint(client, db_session, user_id):
     client_id = uuid4()
     invoice_id = uuid4()
 
-    await db_session.execute(
-        text(
-            """
-            INSERT INTO clients (id, user_id, name, email)
-            VALUES (:client_id, :user_id, 'Test Client', 'test@example.com')
-            """
-        ),
-        {"client_id": client_id, "user_id": user_id},
-    )
-
-    await db_session.execute(
-        text(
-            """
-            INSERT INTO invoices (id, user_id, client_id, amount, due_date, status, email_status, last_email_error)
-            VALUES (:invoice_id, :user_id, :client_id, 1000.00, CURRENT_DATE, 'sent', 'failed', 'Connection timeout')
-            """
-        ),
-        {"invoice_id": invoice_id, "user_id": user_id, "client_id": client_id},
+    await insert_test_client(db_session, user_id, client_id=client_id)
+    await insert_test_invoice(
+        db_session,
+        user_id,
+        client_id,
+        invoice_id=invoice_id,
+        email_status="failed",
+        last_email_error="Connection timeout",
     )
     await db_session.commit()
 
@@ -78,24 +59,13 @@ async def test_resend_invoice_email(client, db_session, user_id):
     client_id = uuid4()
     invoice_id = uuid4()
 
-    await db_session.execute(
-        text(
-            """
-            INSERT INTO clients (id, user_id, name, email)
-            VALUES (:client_id, :user_id, 'Test Client', 'test@example.com')
-            """
-        ),
-        {"client_id": client_id, "user_id": user_id},
-    )
-
-    await db_session.execute(
-        text(
-            """
-            INSERT INTO invoices (id, user_id, client_id, amount, due_date, status, invoice_number)
-            VALUES (:invoice_id, :user_id, :client_id, 1000.00, CURRENT_DATE, 'sent', 'INV-000001')
-            """
-        ),
-        {"invoice_id": invoice_id, "user_id": user_id, "client_id": client_id},
+    await insert_test_client(db_session, user_id, client_id=client_id)
+    await insert_test_invoice(
+        db_session,
+        user_id,
+        client_id,
+        invoice_id=invoice_id,
+        invoice_number="INV-000001",
     )
     await db_session.commit()
 

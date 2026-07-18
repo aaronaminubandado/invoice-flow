@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from uuid import UUID
 from datetime import datetime
 
@@ -36,6 +36,8 @@ class BusinessSettingsUpdate(BaseModel):
 
 
 class BusinessSettingsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     user_id: UUID
     business_name: str
@@ -46,6 +48,3 @@ class BusinessSettingsResponse(BaseModel):
     logo_url: str | None = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True

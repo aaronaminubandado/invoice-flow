@@ -19,7 +19,7 @@ CLIENT_EXPORT_HEADERS = ["Name", "Email", "Phone", "Address", "Created At"]
 async def export_clients(
     user_id: UUID = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    format: Optional[str] = Query("csv", regex="^(csv|xlsx|pdf)$"),
+    format: Optional[str] = Query("csv", pattern="^(csv|xlsx|pdf)$"),
 ):
     """Export all clients as CSV, Excel, or PDF."""
     result = await db.execute(

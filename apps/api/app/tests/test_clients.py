@@ -7,7 +7,7 @@ async def test_client_phone_address_round_trip(client, db_session, user_id):
         "/clients",
         json={
             "name": "Acme Corp",
-            "email": "billing@acme.test",
+            "email": "billing@acme.example.com",
             "phone": "+1 555-0100",
             "address": "123 Main St\nSpringfield",
         },
@@ -30,7 +30,7 @@ async def test_list_clients_pagination(client, db_session, user_id):
     for i in range(3):
         await client.post(
             "/clients",
-            json={"name": f"Client {i}", "email": f"client{i}@paginate.test"},
+            json={"name": f"Client {i}", "email": f"client{i}@paginate.example.com"},
         )
 
     page1 = await client.get("/clients", params={"limit": 2, "offset": 0})

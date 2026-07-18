@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Self
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class InvoiceItemCreate(BaseModel):
@@ -13,15 +13,14 @@ class InvoiceItemCreate(BaseModel):
 
 
 class InvoiceItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     position: int
     description: str
     quantity: Decimal
     unit_price: Decimal
     line_total: Decimal
-
-    class Config:
-        from_attributes = True
 
 
 class InvoiceCreate(BaseModel):
@@ -55,6 +54,8 @@ class PaymentCreate(BaseModel):
 
 
 class PaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     invoice_id: UUID
     amount: Decimal
@@ -63,11 +64,10 @@ class PaymentOut(BaseModel):
     reference: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class InvoiceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     user_id: UUID | None = None
     client_id: UUID | None = None
@@ -84,19 +84,15 @@ class InvoiceOut(BaseModel):
     balance_due: Decimal = Decimal("0")
     items: list[InvoiceItemOut] = []
 
-    class Config:
-        from_attributes = True
-
 
 class InvoiceWithPaymentsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     amount: Decimal
     status: str
     paid_amount: Decimal = 0
     payments: list[PaymentOut] = []
-
-    class Config:
-        from_attributes = True
 
 
 class InvoiceListOut(BaseModel):
