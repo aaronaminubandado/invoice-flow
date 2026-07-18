@@ -11,6 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.charts.piecharts import Pie
 from reportlab.graphics.shapes import Drawing, String
 
 
@@ -52,23 +53,33 @@ class PDFService:
         styles = getSampleStyleSheet()
         elements = []
 
+        accent = colors.HexColor("#0f766e")
+        muted = colors.HexColor("#78716c")
+
         if business_info:
             elements.append(Paragraph(business_info.business_name, styles["Heading2"]))
-            elements.append(Paragraph(business_info.business_email, styles["Normal"]))
+            contact_style = ParagraphStyle(
+                "BusinessContact",
+                parent=styles["Normal"],
+                fontSize=10,
+                textColor=muted,
+            )
+            elements.append(Paragraph(business_info.business_email, contact_style))
             if business_info.phone:
-                elements.append(Paragraph(business_info.phone, styles["Normal"]))
+                elements.append(Paragraph(business_info.phone, contact_style))
             if business_info.address:
-                elements.append(Paragraph(business_info.address, styles["Normal"]))
-            elements.append(Spacer(1, 20))
+                elements.append(Paragraph(business_info.address, contact_style))
+            elements.append(Spacer(1, 16))
 
         title_style = ParagraphStyle(
             "Title",
             parent=styles["Heading1"],
-            fontSize=24,
-            spaceAfter=30,
+            fontSize=28,
+            textColor=accent,
+            spaceAfter=8,
         )
         elements.append(Paragraph("INVOICE", title_style))
-        elements.append(Spacer(1, 20))
+        elements.append(Spacer(1, 16))
 
         currency_symbol = PDFService.currency_symbol(
             business_info.currency if business_info else "USD"
@@ -89,19 +100,20 @@ class PDFService:
                     ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
                     ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
                     ("FONTSIZE", (0, 0), (-1, -1), 10),
+                    ("TEXTCOLOR", (0, 0), (0, -1), muted),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                 ]
             )
         )
         elements.append(info_table)
-        elements.append(Spacer(1, 30))
+        elements.append(Spacer(1, 24))
 
         elements.append(Paragraph("Bill To:", styles["Heading3"]))
         elements.append(Paragraph(client_name, styles["Normal"]))
         elements.append(Paragraph(client_email, styles["Normal"]))
         if client_address:
             elements.append(Paragraph(client_address, styles["Normal"]))
-        elements.append(Spacer(1, 30))
+        elements.append(Spacer(1, 24))
 
         if items:
             items_data = [["Description", "Qty", "Unit Price", "Line Total"]]
@@ -128,13 +140,14 @@ class PDFService:
         items_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                    ("BACKGROUND", (0, 0), (-1, 0), accent),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("FONTSIZE", (0, 0), (-1, -1), 10),
-                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d6d3d1")),
                 ]
             )
         )
@@ -224,18 +237,26 @@ class PDFService:
         if distribution:
             elements.append(Paragraph("Revenue Distribution", styles["Heading3"]))
             elements.append(Spacer(1, 8))
-            chart = Drawing(420, 180)
-            bar_chart = VerticalBarChart()
-            bar_chart.x = 40
-            bar_chart.y = 20
-            bar_chart.height = 120
-            bar_chart.width = 320
-            bar_chart.data = [[float(value) for _, value in distribution]]
-            bar_chart.categoryAxis.categoryNames = [label for label, _ in distribution]
-            bar_chart.valueAxis.valueMin = 0
-            bar_chart.bars[0].fillColor = colors.HexColor("#0f766e")
-            chart.add(bar_chart)
-            chart.add(String(0, 160, "Amounts by status", fontSize=10))
+            chart = Drawing(420, 200)
+            pie = Pie()
+            pie.x = 130
+            pie.y = 25
+            pie.width = 120
+            pie.height = 120
+            pie.data = [float(value) for _, value in distribution]
+            pie.labels = [label for label, _ in distribution]
+            pie.slices.strokeWidth = 0.5
+            slice_colors = {
+                "Paid": colors.HexColor("#0f766e"),
+                "Outstanding": colors.HexColor("#d97706"),
+                "Overdue": colors.HexColor("#dc2626"),
+            }
+            for index, (label, _) in enumerate(distribution):
+                pie.slices[index].fillColor = slice_colors.get(
+                    label, colors.HexColor("#64748b")
+                )
+            chart.add(pie)
+            chart.add(String(0, 175, "Revenue distribution by status", fontSize=10))
             elements.append(chart)
             elements.append(Spacer(1, 24))
 

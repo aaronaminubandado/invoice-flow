@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from sqlalchemy import text
 
+from app.tests.helpers import insert_test_client, insert_test_invoice
+
 
 def test_generate_invoice_pdf():
     """Test invoice PDF generation"""
@@ -127,22 +129,14 @@ async def test_invoice_pdf_endpoint(client, db_session, user_id, address):
             "address": address,
         },
     )
-    await db_session.execute(
-        text("""
-            INSERT INTO invoices (
-                id, user_id, client_id, amount, due_date, status, invoice_number
-            )
-            VALUES (
-                :invoice_id, :user_id, :client_id, 250.00,
-                CURRENT_DATE, 'sent', :invoice_number
-            )
-        """),
-        {
-            "invoice_id": invoice_id,
-            "user_id": user_id,
-            "client_id": client_id,
-            "invoice_number": f"INV-{str(invoice_id)[:8]}",
-        },
+    await insert_test_invoice(
+        db_session,
+        user_id,
+        client_id,
+        invoice_id=invoice_id,
+        amount=250.00,
+        status="sent",
+        invoice_number=f"INV-{str(invoice_id)[:8]}",
     )
     await db_session.commit()
 
@@ -152,3 +146,37 @@ async def test_invoice_pdf_endpoint(client, db_session, user_id, address):
     assert response.headers["content-type"] == "application/pdf"
     assert "attachment; filename=invoice_" in response.headers["content-disposition"]
     assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.asyncio
+async def test_invoice_pdf_endpoint_with_line_items(client, db_session, user_id):
+    client_id = await insert_test_client(db_session, user_id)
+    invoice_id = await insert_test_invoice(
+        db_session,
+        user_id,
+        client_id,
+        amount=300.00,
+        status="sent",
+        invoice_number="INV-PDF-ITEMS",
+    )
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO invoice_items (
+                invoice_id, description, quantity, unit_price, line_total, position
+            )
+            VALUES
+                (:invoice_id, 'Design work', 2, 100.00, 200.00, 0),
+                (:invoice_id, 'Hosting', 1, 100.00, 100.00, 1)
+            """
+        ),
+        {"invoice_id": invoice_id},
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/invoices/{invoice_id}/pdf")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert len(response.content) > 1000

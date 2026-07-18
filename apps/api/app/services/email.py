@@ -188,11 +188,10 @@ class EmailService:
     ) -> EmailResult:
         """Send invoice email with PDF attachment and update tracking in database"""
         from sqlalchemy import text
+        from uuid import UUID
         from app.core.database import AsyncSessionLocal
-        from app.services.pdf import PDFService
+        from app.services.invoice_pdf import build_invoice_pdf_bytes
         from app.services.business_settings import get_business_settings
-        from decimal import Decimal
-        from datetime import date
 
         invoice_id = sanitize_email_input(invoice_id)
 
@@ -201,11 +200,8 @@ class EmailService:
                 business_info = None
                 invoice_result = await db.execute(
                     text("""
-                        SELECT i.user_id, i.invoice_number, i.amount, i.description,
-                               i.due_date, i.status, i.created_at,
-                               c.name as client_name, c.email as client_email
+                        SELECT i.user_id, i.invoice_number
                         FROM invoices i
-                        JOIN clients c ON i.client_id = c.id
                         WHERE i.id = :invoice_id
                     """),
                     {"invoice_id": invoice_id},
@@ -231,19 +227,9 @@ class EmailService:
                         }
 
                     try:
-                        pdf_bytes = PDFService.generate_invoice_pdf(
-                            invoice_id=invoice_id,
-                            invoice_number=inv_data.get("invoice_number"),
-                            amount=Decimal(str(inv_data["amount"])),
-                            description=inv_data.get("description") or "",
-                            due_date=inv_data["due_date"],
-                            status=inv_data.get("status", "sent"),
-                            client_name=inv_data["client_name"],
-                            client_email=inv_data["client_email"],
-                            created_at=inv_data.get("created_at", date.today()),
-                            business_info=business_info,
+                        pdf_bytes, filename = await build_invoice_pdf_bytes(
+                            db, invoice_id=UUID(invoice_id)
                         )
-                        filename = f"invoice_{inv_data.get('invoice_number') or invoice_id[:8]}.pdf"
                         attachments.append(
                             EmailAttachment(
                                 filename=filename,
@@ -363,6 +349,12 @@ class EmailService:
 
         invoice_id = sanitize_email_input(invoice_id)
 
+        result = EmailResult(
+            success=False,
+            email_status=EmailStatus.FAILED,
+            error_message="Failed to send receipt email",
+        )
+
         async with AsyncSessionLocal() as db:
             try:
                 payment_result = await db.execute(
@@ -462,6 +454,11 @@ class EmailService:
             except Exception as e:
                 logger.error(
                     f"Failed to update receipt email tracking for {invoice_id}: {e}"
+                )
+                result = EmailResult(
+                    success=False,
+                    email_status=EmailStatus.FAILED,
+                    error_message=str(e),
                 )
 
         return result

@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.schemas.invoice import PublicInvoiceOut, PublicBusinessInfo
 from app.services.business_settings import get_business_settings
 from app.services.invoice_items import fetch_invoice_items
+from app.services.invoice_pdf import build_invoice_pdf_bytes
 from app.services.pdf import PDFService
 
 router = APIRouter(prefix="/public", tags=["Public"])
@@ -88,48 +89,11 @@ async def get_public_invoice_pdf(
 ):
     data = await _load_public_invoice(db, share_token)
 
-    paid_result = await db.execute(
-        text("""
-            SELECT COALESCE(SUM(amount), 0) AS paid
-            FROM payments WHERE invoice_id = :invoice_id
-        """),
-        {"invoice_id": data["id"]},
-    )
-    paid_row = paid_result.first()
-    paid_amount = Decimal(str(dict(paid_row._mapping)["paid"]))
-    total = Decimal(str(data["amount"]))
-    balance_due = max(total - paid_amount, Decimal("0"))
+    try:
+        pdf_bytes, filename = await build_invoice_pdf_bytes(db, share_token=share_token)
+    except ValueError:
+        raise HTTPException(404, "Invoice not found")
 
-    business_info = await get_business_settings(db, data["user_id"])
-    items = await fetch_invoice_items(db, data["id"])
-
-    client_row = await db.execute(
-        text(
-            "SELECT name, email, address FROM clients c "
-            "JOIN invoices i ON i.client_id = c.id WHERE i.id = :id"
-        ),
-        {"id": data["id"]},
-    )
-    client = dict(client_row.first()._mapping)
-
-    pdf_bytes = PDFService.generate_invoice_pdf(
-        invoice_id=str(data["id"]),
-        invoice_number=data.get("invoice_number"),
-        amount=total,
-        description=data.get("description") or "",
-        due_date=data["due_date"],
-        status=data["status"],
-        client_name=client["name"],
-        client_email=client["email"],
-        client_address=client.get("address"),
-        created_at=data.get("created_at"),
-        business_info=business_info,
-        items=items,
-        paid_amount=paid_amount,
-        balance_due=balance_due,
-    )
-
-    filename = f"invoice_{data.get('invoice_number') or share_token[:8]}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

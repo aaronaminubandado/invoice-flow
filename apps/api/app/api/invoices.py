@@ -26,6 +26,8 @@ from app.services.invoice_state import (
     InvoiceStatus,
 )
 from app.services.pdf import PDFService
+from app.services.api_errors import invoice_create_error_message
+from app.services.invoice_pdf import build_invoice_pdf_bytes
 from app.services.invoice_number import InvoiceNumberService
 from app.services.business_settings import get_business_settings
 from app.services.export import generate_csv, generate_xlsx, generate_pdf_table
@@ -79,7 +81,7 @@ EXPORT_HEADERS = [
 async def export_invoices(
     user_id: UUID = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    format: Optional[str] = Query("csv", regex="^(csv|xlsx|pdf)$"),
+    format: Optional[str] = Query("csv", pattern="^(csv|xlsx|pdf)$"),
 ):
     """Export all invoices as CSV, Excel, or PDF."""
     result = await db.execute(
@@ -276,10 +278,9 @@ async def create_invoice(
         raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create invoice: {str(e)}",
-        )
+        logger.exception("Failed to create invoice")
+        status_code, detail = invoice_create_error_message(e)
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.get("", response_model=InvoiceListOut)
@@ -1007,55 +1008,12 @@ async def get_invoice_pdf(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate and download PDF for an invoice."""
-    result = await db.execute(
-        text("""
-            SELECT
-                i.id, i.amount, i.description, i.due_date, i.status,
-                i.created_at, i.invoice_number,
-                c.name as client_name, c.email as client_email,
-                c.address as client_address,
-                COALESCE(p.paid, 0)::NUMERIC(12,2) AS paid_amount
-            FROM invoices i
-            JOIN clients c ON i.client_id = c.id
-            LEFT JOIN (
-                SELECT invoice_id, SUM(amount) AS paid
-                FROM payments
-                GROUP BY invoice_id
-            ) p ON p.invoice_id = i.id
-            WHERE i.id = :invoice_id AND i.user_id = :uid
-        """),
-        {"invoice_id": invoice_id, "uid": user_id},
-    )
-
-    row = result.first()
-    if not row:
+    try:
+        pdf_bytes, filename = await build_invoice_pdf_bytes(
+            db, invoice_id=invoice_id, user_id=user_id
+        )
+    except ValueError:
         raise HTTPException(404, "Invoice not found")
-
-    data = dict(row._mapping)
-    business_info = await get_business_settings(db, user_id)
-    items = await fetch_invoice_items(db, invoice_id)
-    invoice_amount = Decimal(str(data["amount"]))
-    paid_amount = Decimal(str(data.get("paid_amount") or 0))
-    balance_due = max(invoice_amount - paid_amount, Decimal("0"))
-
-    pdf_bytes = PDFService.generate_invoice_pdf(
-        invoice_id=str(data["id"]),
-        invoice_number=data.get("invoice_number"),
-        amount=invoice_amount,
-        description=data.get("description") or "",
-        due_date=data["due_date"],
-        status=data["status"],
-        client_name=data["client_name"],
-        client_email=data["client_email"],
-        client_address=data.get("client_address"),
-        created_at=data.get("created_at"),
-        business_info=business_info,
-        items=items,
-        paid_amount=paid_amount,
-        balance_due=balance_due,
-    )
-
-    filename = f"invoice_{data.get('invoice_number') or str(invoice_id)[:8]}.pdf"
 
     return Response(
         content=pdf_bytes,
