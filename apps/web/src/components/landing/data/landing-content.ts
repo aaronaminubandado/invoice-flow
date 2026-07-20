@@ -2,7 +2,7 @@ import {
   FileText,
   Users,
   CreditCard,
-  Repeat,
+  Mail,
   Globe,
   BarChart3,
   UserPlus,
@@ -17,16 +17,16 @@ import {
 
 export const heroContent = {
   eyebrow: 'Invoicing for freelancers & agencies',
-  headline: 'Invoicing that gets out of your way',
+  headline: 'Easy invoicing to get you paid',
   subhead:
-    'Create polished invoices, track what\u2019s overdue, and see revenue in one place \u2014 without spreadsheets or template wrestling.',
+    'Create polished invoices, track what\u2019s overdue, and see revenue in one place, without spreadsheets or template wrestling.',
   primaryCta: 'Start free',
   secondaryCta: 'See how it works',
   trustLine: 'Free to start \u00b7 No credit card \u00b7 Setup in 2 minutes',
   stats: [
-    { value: '$2.4M+', label: 'invoiced on platform' },
-    { value: '12k+', label: 'invoices sent monthly' },
-    { value: '98%', label: 'on-time delivery rate' },
+    { value: 'Invoices', label: 'create, send & track' },
+    { value: 'Clients', label: 'contacts & history' },
+    { value: 'Analytics', label: 'revenue at a glance' },
   ],
 }
 
@@ -44,7 +44,7 @@ export const features = [
     icon: FileText,
     title: 'Professional invoices',
     description:
-      'Build clean, branded invoices in minutes. Line items, taxes, and notes \u2014 all in one editor.',
+      'Build clean, branded invoices in minutes. Line items, taxes, and notes, all in one editor.',
     large: false,
   },
   {
@@ -62,10 +62,10 @@ export const features = [
     large: true,
   },
   {
-    icon: Repeat,
-    title: 'Recurring invoices',
+    icon: Mail,
+    title: 'Email reminders',
     description:
-      'Set the schedule once. Invoice Flow sends on time and flags anything unpaid.',
+      'Send polite follow-ups before and after due dates so unpaid invoices don\u2019t slip through.',
     large: false,
   },
   {
@@ -79,7 +79,7 @@ export const features = [
     icon: BarChart3,
     title: 'Revenue analytics',
     description:
-      'Monthly trends, collection rates, and outstanding balances \u2014 updated as payments come in.',
+      'Monthly trends, collection rates, and outstanding balances, updated as payments come in.',
     large: false,
   },
 ]
@@ -92,6 +92,7 @@ export const walkthroughSteps = [
     description:
       'Pick a client, add line items from your product catalog or type them in. Taxes and totals calculate automatically.',
     screenshotLabel: 'Invoice editor',
+    screenshotSrc: '/screenshots/create-invoice.png',
   },
   {
     id: 'send',
@@ -100,6 +101,7 @@ export const walkthroughSteps = [
     description:
       'Send via email with a secure link. Clients view, download, and pay without creating an account.',
     screenshotLabel: 'Invoice delivery',
+    screenshotSrc: '/screenshots/invoice-email.png',
   },
   {
     id: 'track',
@@ -108,6 +110,7 @@ export const walkthroughSteps = [
     description:
       'Dashboard shows paid, pending, and overdue invoices. Get notified when a client opens or pays.',
     screenshotLabel: 'Payment dashboard',
+    screenshotSrc: '/screenshots/invoices.png',
   },
 ]
 
@@ -161,83 +164,6 @@ export const benefits = [
   },
 ]
 
-export const testimonials = [
-  {
-    quote:
-      'I used to spend an hour every week on invoicing. Now I send five invoices in ten minutes and actually know who hasn\u2019t paid.',
-    name: 'Sarah Chen',
-    role: 'Freelance UX Designer',
-    company: 'Independent',
-    initials: 'SC',
-  },
-  {
-    quote:
-      'Our agency bills 40+ clients monthly. Invoice Flow handles recurring invoices and multi-currency without the chaos we had in spreadsheets.',
-    name: 'Marcus Webb',
-    role: 'Operations Director',
-    company: 'Fieldwork Agency',
-    initials: 'MW',
-  },
-  {
-    quote:
-      'The revenue dashboard replaced three different tools. I can see what\u2019s outstanding before Monday standup without asking finance.',
-    name: 'Elena Rodriguez',
-    role: 'Founder',
-    company: 'Summit Digital',
-    initials: 'ER',
-  },
-]
-
-export const pricingTiers = [
-  {
-    name: 'Starter',
-    price: 'Free',
-    period: 'forever',
-    description: 'For freelancers sending a handful of invoices each month.',
-    highlighted: false,
-    features: [
-      'Up to 5 invoices per month',
-      '1 user',
-      'Client management',
-      'Email delivery',
-      'USD billing',
-    ],
-    cta: 'Start free',
-  },
-  {
-    name: 'Pro',
-    price: '$19',
-    period: '/month',
-    description: 'For growing freelancers and small teams with regular billing.',
-    highlighted: true,
-    features: [
-      'Unlimited invoices',
-      '3 users',
-      'Recurring invoices',
-      'Multi-currency',
-      'Revenue analytics',
-      'Payment reminders',
-    ],
-    cta: 'Start free trial',
-  },
-  {
-    name: 'Business',
-    price: '$49',
-    period: '/month',
-    description: 'For agencies managing multiple clients and team members.',
-    highlighted: false,
-    features: [
-      'Everything in Pro',
-      'Unlimited users',
-      'Custom branding',
-      'Priority support',
-      'Data export',
-      'Advanced reporting',
-    ],
-    cta: 'Start free trial',
-  },
-]
-
 export const faqItems = [
   {
     question: 'What\u2019s included in the free plan?',
@@ -274,14 +200,12 @@ export const faqItems = [
 export const navLinks = [
   { label: 'Features', href: '#features' },
   { label: 'How it works', href: '#walkthrough' },
-  { label: 'Pricing', href: '#pricing' },
   { label: 'FAQ', href: '#faq' },
 ]
 
 export const footerLinks = {
   product: [
     { label: 'Features', href: '#features' },
-    { label: 'Pricing', href: '#pricing' },
     { label: 'FAQ', href: '#faq' },
   ],
   company: [
