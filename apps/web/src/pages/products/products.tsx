@@ -48,6 +48,7 @@ export function ProductsPage() {
   const [includeInactive, setIncludeInactive] = useState(false)
   const [page, setPage] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createFormKey, setCreateFormKey] = useState(0)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -83,6 +84,7 @@ export function ProductsPage() {
     mutationFn: (input: CreateProductInput) => productsApi.create(input),
     onSuccess: () => {
       invalidate()
+      setCreateFormKey((key) => key + 1)
       setCreateOpen(false)
       success('Product created')
     },
@@ -146,7 +148,12 @@ export function ProductsPage() {
             Manage your catalog for faster invoicing
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button
+          onClick={() => {
+            setCreateFormKey((key) => key + 1)
+            setCreateOpen(true)
+          }}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Add Product
         </Button>
@@ -343,7 +350,7 @@ export function ProductsPage() {
       </div>
 
       <ProductFormModal
-        key="create-product"
+        key={createFormKey}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         categories={categories}
