@@ -12,6 +12,7 @@ from app.schemas.product import (
     ProductCategoryOut,
     ProductCategoryUpdate,
 )
+from app.services.catalog_errors import category_create_error_message
 
 router = APIRouter(prefix="/product-categories", tags=["Product Categories"])
 
@@ -65,9 +66,7 @@ async def create_product_category(
         await db.commit()
     except Exception as exc:
         await db.rollback()
-        from app.services.api_errors import invoice_create_error_message
-
-        status_code, detail = invoice_create_error_message(exc)
+        status_code, detail = category_create_error_message(exc)
         raise HTTPException(status_code=status_code, detail=detail)
     return dict(row._mapping)
 

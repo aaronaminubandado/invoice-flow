@@ -12,7 +12,7 @@ from app.schemas.product import (
     ProductOut,
     ProductUpdate,
 )
-from app.services.api_errors import invoice_create_error_message
+from app.services.catalog_errors import product_create_error_message
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -100,7 +100,7 @@ async def create_product(
         await db.commit()
     except Exception as exc:
         await db.rollback()
-        status_code, detail = invoice_create_error_message(exc)
+        status_code, detail = product_create_error_message(exc)
         raise HTTPException(status_code=status_code, detail=detail)
 
     full = await db.execute(
@@ -227,7 +227,7 @@ async def update_product(
         raise
     except Exception as exc:
         await db.rollback()
-        status_code, detail = invoice_create_error_message(exc)
+        status_code, detail = product_create_error_message(exc)
         raise HTTPException(status_code=status_code, detail=detail)
 
     full = await db.execute(
