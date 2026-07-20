@@ -4,7 +4,6 @@ import {
   TrendingUp,
   Clock,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { mockInvoices, mockStats, mockChartData } from '../data/landing-content'
@@ -134,22 +133,6 @@ export function DashboardMockup({ className }: { className?: string }) {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Floating notification */}
-      <motion.div
-        initial={prefersReducedMotion ? false : { opacity: 0, x: 20, y: -10 }}
-        animate={{ opacity: 1, x: 0, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="absolute -right-2 md:-right-6 top-16 md:top-20 z-10"
-      >
-        <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/20 bg-card px-4 py-3 shadow-lg shadow-emerald-500/10">
-          <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-          <div>
-            <p className="text-xs font-medium">Payment received</p>
-            <p className="text-sm font-semibold tabular-nums">$4,200.00</p>
           </div>
         </div>
       </motion.div>
