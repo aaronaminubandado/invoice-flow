@@ -2,7 +2,15 @@
 
 @theme {
   --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Instrument Sans', 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-landing-bg: #0a0e14;
+  --color-landing-surface: #121820;
+  --color-landing-foreground: #eef2f6;
+  --color-landing-muted: #8b97a8;
+  --color-landing-accent: #0f766e;
+  --color-landing-accent-glow: #14b8a6;
 
   --color-background: #0c1117;
   --color-foreground: #eef2f6;
@@ -76,10 +84,25 @@
   --color-input: #dbe3ea;
 
   --color-ring: #0f766e;
+
+  --color-landing-bg: #f8fafb;
+  --color-landing-surface: #ffffff;
+  --color-landing-foreground: #0f172a;
+  --color-landing-muted: #64748b;
 }
 
 * {
   border-color: var(--color-border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
@@ -145,6 +168,43 @@ body {
 
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .landing-page {
+    background-color: var(--color-landing-bg);
+    color: var(--color-landing-foreground);
+  }
+
+  .landing-gradient-hero {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -20%, color-mix(in srgb, var(--color-landing-accent-glow) 18%, transparent), transparent),
+      radial-gradient(ellipse 50% 40% at 90% 10%, color-mix(in srgb, var(--color-landing-accent) 8%, transparent), transparent),
+      var(--color-landing-bg);
+  }
+
+  .landing-grid-bg {
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--color-landing-muted) 20%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .landing-card-hover {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .landing-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-landing-accent) 12%, transparent),
+      0 8px 24px color-mix(in srgb, var(--color-landing-foreground) 6%, transparent);
+  }
+
+  .landing-surface {
+    background-color: var(--color-landing-surface);
+    border: 1px solid color-mix(in srgb, var(--color-landing-muted) 20%, transparent);
   }
 }
 
