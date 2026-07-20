@@ -24,6 +24,7 @@ interface ProductSearchComboboxProps {
   onSelect: (product: Product) => void
   initialProducts?: Product[]
   placeholder?: string
+  resetOnSelect?: boolean
 }
 
 export function ProductSearchCombobox({
@@ -31,6 +32,7 @@ export function ProductSearchCombobox({
   onSelect,
   initialProducts = [],
   placeholder = 'Search products…',
+  resetOnSelect = false,
 }: ProductSearchComboboxProps) {
   const listboxId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -73,7 +75,11 @@ export function ProductSearchCombobox({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const displayValue = open ? query : selectedProduct?.name ?? ''
+  const displayValue = open
+    ? query
+    : resetOnSelect || !value
+      ? ''
+      : selectedProduct?.name ?? ''
 
   return (
     <div ref={containerRef} className="relative">
@@ -119,7 +125,11 @@ export function ProductSearchCombobox({
                   aria-selected={product.id === value}
                   onClick={() => {
                     onSelect(product)
-                    setQuery(product.name)
+                    if (resetOnSelect) {
+                      setQuery('')
+                    } else {
+                      setQuery(product.name)
+                    }
                     setOpen(false)
                   }}
                   className={cn(

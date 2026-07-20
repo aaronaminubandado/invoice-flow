@@ -40,6 +40,7 @@ import type { ExportFormat } from '@/lib/download'
 import {
   Invoice,
   Client,
+  Product,
   CreateInvoiceInput,
   CreatePaymentInput,
   CreateInvoiceItemInput,
@@ -543,7 +544,19 @@ function CreateInvoiceForm({
   const [clientId, setClientId] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [description, setDescription] = useState('')
-  const [items, setItems] = useState<CreateInvoiceItemInput[]>([emptyItem()])
+  const [items, setItems] = useState<CreateInvoiceItemInput[]>([])
+
+  const handleAddProduct = (product: Product) => {
+    setItems((prev) => [
+      ...prev,
+      {
+        product_id: product.id,
+        description: product.name,
+        quantity: 1,
+        unit_price: Number(product.unit_price),
+      },
+    ])
+  }
 
   const lineTotal = (item: CreateInvoiceItemInput) =>
     lineItemTotal({ quantity: Number(item.quantity), unit_price: Number(item.unit_price) })
@@ -608,77 +621,73 @@ function CreateInvoiceForm({
               size="sm"
               onClick={() => setItems([...items, emptyItem()])}
             >
-              Add row
+              Add custom line
             </Button>
           </div>
-          {items.map((item, index) => (
-            <div key={index} className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-5 space-y-1.5">
-                <ProductSearchCombobox
-                  value={item.product_id}
-                  initialProducts={productOptions}
-                  onSelect={(product) => {
-                    const next = [...items]
-                    next[index] = {
-                      ...item,
-                      product_id: product.id,
-                      description: product.name,
-                      unit_price: Number(product.unit_price),
-                    }
-                    setItems(next)
-                  }}
-                />
-                <Input
-                  placeholder="Description"
-                  value={item.description}
-                  onChange={(e) => {
-                    const next = [...items]
-                    next[index] = { ...item, description: e.target.value }
-                    setItems(next)
-                  }}
-                />
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Qty"
-                  className="font-mono"
-                  value={item.quantity || ''}
-                  onChange={(e) => {
-                    const next = [...items]
-                    next[index] = {
-                      ...item,
-                      quantity: parseFloat(e.target.value) || 0,
-                    }
-                    setItems(next)
-                  }}
-                />
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Price"
-                  className="font-mono"
-                  value={item.unit_price || ''}
-                  onChange={(e) => {
-                    const next = [...items]
-                    next[index] = {
-                      ...item,
-                      unit_price: parseFloat(e.target.value) || 0,
-                    }
-                    setItems(next)
-                  }}
-                />
-              </div>
-              <div className="col-span-2 text-right text-sm font-mono py-2">
-                {formatCurrency(lineTotal(item), currency)}
-              </div>
-              <div className="col-span-1">
-                {items.length > 1 && (
+          <ProductSearchCombobox
+            initialProducts={productOptions}
+            resetOnSelect
+            onSelect={handleAddProduct}
+            placeholder="Search products to add…"
+          />
+          {items.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              Search for a product or add a custom line
+            </p>
+          ) : (
+            items.map((item, index) => (
+              <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-5">
+                  <Input
+                    placeholder="Description"
+                    value={item.description}
+                    onChange={(e) => {
+                      const next = [...items]
+                      next[index] = { ...item, description: e.target.value }
+                      setItems(next)
+                    }}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Qty"
+                    className="font-mono"
+                    value={item.quantity || ''}
+                    onChange={(e) => {
+                      const next = [...items]
+                      next[index] = {
+                        ...item,
+                        quantity: parseFloat(e.target.value) || 0,
+                      }
+                      setItems(next)
+                    }}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Price"
+                    className="font-mono"
+                    value={item.unit_price || ''}
+                    onChange={(e) => {
+                      const next = [...items]
+                      next[index] = {
+                        ...item,
+                        unit_price: parseFloat(e.target.value) || 0,
+                      }
+                      setItems(next)
+                    }}
+                  />
+                </div>
+                <div className="col-span-2 text-right text-sm font-mono py-2">
+                  {formatCurrency(lineTotal(item), currency)}
+                </div>
+                <div className="col-span-1">
                   <Button
                     type="button"
                     variant="ghost"
@@ -687,10 +696,10 @@ function CreateInvoiceForm({
                   >
                     <X className="h-4 w-4" />
                   </Button>
-                )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
           <div className="flex justify-end pt-1">
             <span className="text-sm text-muted-foreground mr-2">Total</span>
             <span className="font-bold font-mono">{formatCurrency(runningTotal, currency)}</span>
