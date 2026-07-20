@@ -32,7 +32,7 @@ from app.services.invoice_number import InvoiceNumberService
 from app.services.business_settings import get_business_settings
 from app.services.export import generate_csv, generate_xlsx, generate_pdf_table
 from app.services.invoice_items import (
-    compute_invoice_total,
+    compute_resolved_invoice_total,
     insert_invoice_items,
     replace_invoice_items,
     fetch_invoice_items,
@@ -179,7 +179,7 @@ async def create_invoice(
 
         share_token = secrets.token_urlsafe(24)
         if payload.items:
-            amount = compute_invoice_total(payload.items)
+            amount = await compute_resolved_invoice_total(db, user_id, payload.items)
         else:
             amount = payload.amount
 
@@ -223,7 +223,7 @@ async def create_invoice(
         invoice_data = dict(row._mapping)
 
         if payload.items:
-            await insert_invoice_items(db, invoice_data["id"], payload.items)
+            await insert_invoice_items(db, invoice_data["id"], user_id, payload.items)
 
         await db.commit()
 
@@ -427,7 +427,7 @@ async def update_invoice(
             )
 
     if payload.items:
-        amount = compute_invoice_total(payload.items)
+        amount = await compute_resolved_invoice_total(db, user_id, payload.items)
     else:
         amount = payload.amount
 
@@ -456,7 +456,7 @@ async def update_invoice(
         raise HTTPException(404, "Invoice not found")
 
     if payload.items:
-        await replace_invoice_items(db, invoice_id, payload.items)
+        await replace_invoice_items(db, invoice_id, user_id, payload.items)
 
     await db.commit()
 

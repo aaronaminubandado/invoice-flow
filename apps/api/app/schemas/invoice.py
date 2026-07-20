@@ -7,9 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class InvoiceItemCreate(BaseModel):
-    description: str
+    description: str | None = None
     quantity: Annotated[Decimal, Field(gt=0)]
-    unit_price: Annotated[Decimal, Field(ge=0)]
+    unit_price: Annotated[Decimal, Field(ge=0)] | None = None
+    product_id: UUID | None = None
 
 
 class InvoiceItemOut(BaseModel):
@@ -21,6 +22,7 @@ class InvoiceItemOut(BaseModel):
     quantity: Decimal
     unit_price: Decimal
     line_total: Decimal
+    product_id: UUID | None = None
 
 
 class InvoiceCreate(BaseModel):
@@ -42,6 +44,12 @@ class InvoiceCreate(BaseModel):
             raise ValueError("Either items or amount is required")
         if self.items is not None and len(self.items) == 0:
             raise ValueError("items must contain at least one line when provided")
+        if self.items:
+            for item in self.items:
+                if item.product_id is None and not (item.description and item.description.strip()):
+                    raise ValueError("Each custom line item requires a description")
+                if item.product_id is None and item.unit_price is None:
+                    raise ValueError("Each custom line item requires a unit price")
         return self
 
 
