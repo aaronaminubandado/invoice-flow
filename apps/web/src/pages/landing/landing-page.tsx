@@ -5,8 +5,6 @@ import { FeaturesSection } from '@/components/landing/sections/features-section'
 import { WalkthroughSection } from '@/components/landing/sections/walkthrough-section'
 import { WorkflowSection } from '@/components/landing/sections/workflow-section'
 import { BenefitsSection } from '@/components/landing/sections/benefits-section'
-import { TestimonialsSection } from '@/components/landing/sections/testimonials-section'
-import { PricingSection } from '@/components/landing/sections/pricing-section'
 import { FaqSection } from '@/components/landing/sections/faq-section'
 import { FinalCtaSection } from '@/components/landing/sections/final-cta-section'
 
@@ -19,8 +17,6 @@ export function LandingPage() {
       <WalkthroughSection />
       <WorkflowSection />
       <BenefitsSection />
-      <TestimonialsSection />
-      <PricingSection />
       <FaqSection />
       <FinalCtaSection />
     </LandingLayout>

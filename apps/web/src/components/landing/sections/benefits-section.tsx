@@ -3,7 +3,6 @@ import { benefits, mockChartData } from '../data/landing-content'
 import { MiniChart } from '../mockups/mini-chart'
 
 function AnalyticsMockup() {
-  const bars = [40, 55, 48, 72, 65, 80, 74, 90, 85, 95, 88, 100]
   const statuses = [
     { label: 'Paid', value: 68, color: 'bg-emerald-500' },
     { label: 'Pending', value: 22, color: 'bg-amber-500' },
@@ -39,16 +38,6 @@ function AnalyticsMockup() {
             </div>
           ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-6 gap-1.5 items-end h-16">
-        {bars.map((h, i) => (
-          <div
-            key={i}
-            className="rounded-sm bg-landing-accent/20 hover:bg-landing-accent/40 transition-colors"
-            style={{ height: `${h}%` }}
-          />
-        ))}
       </div>
     </div>
   )
