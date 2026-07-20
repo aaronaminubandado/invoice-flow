@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api import invoices, dashboard, webhooks, clients
+from app.api.products import router as products_router
+from app.api.product_categories import router as product_categories_router
 from app.api.public import router as public_router
 from app.api.metrics import router as metrics_router
 from app.api.settings import router as settings_router
@@ -63,6 +65,8 @@ app.include_router(public_router)
 app.include_router(dashboard.router)
 app.include_router(webhooks.router)
 app.include_router(clients.router)
+app.include_router(products_router)
+app.include_router(product_categories_router)
 app.include_router(metrics_router)
 app.include_router(settings_router)
 
