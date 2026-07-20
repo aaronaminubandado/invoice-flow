@@ -11,7 +11,7 @@ function scrollToWalkthrough() {
 
 export function HeroSection() {
   return (
-    <section className="landing-gradient-hero pt-32 pb-20 md:pt-40 md:pb-28">
+    <section className="landing-gradient-hero pt-24 pb-20 md:pt-28 md:pb-28">
       <div className="mx-auto max-w-[1200px] px-4 sm:px-6">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <div>
