@@ -11,6 +11,11 @@ import { ForgotPasswordPage } from '@/pages/auth/forgot-password'
 import { ResetPasswordPage } from '@/pages/auth/reset-password'
 import { PublicInvoicePage } from '@/pages/public/invoice-view'
 
+const LandingPage = lazy(() =>
+  import('@/pages/landing/landing-page').then((module) => ({
+    default: module.LandingPage,
+  }))
+)
 const DashboardPage = lazy(() =>
   import('@/pages/dashboard/dashboard').then((module) => ({
     default: module.DashboardPage,
@@ -187,7 +192,15 @@ function App() {
                 />
               </Route>
 
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="/"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <LandingPage />
+                  </Suspense>
+                }
+              />
+
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </BrowserRouter>
