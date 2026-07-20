@@ -50,7 +50,7 @@ export function FeaturesSection() {
         <SectionHeader
           eyebrow="Features"
           title="Everything you need to invoice and get paid"
-          description="From your first client to your hundredth recurring invoice — one workspace handles it all."
+          description="From your first client to your hundredth invoice, one workspace handles it all."
           className="mb-16"
         />
 

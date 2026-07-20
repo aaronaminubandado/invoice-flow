@@ -53,7 +53,11 @@ export function WalkthroughSection() {
               </h3>
               <p className="text-landing-muted leading-relaxed text-lg">{step.description}</p>
             </div>
-            <FeatureScreenshot label={step.screenshotLabel} />
+            <FeatureScreenshot
+              label={step.screenshotLabel}
+              src={step.screenshotSrc}
+              alt={step.title}
+            />
           </div>
         </FadeIn>
       </div>
