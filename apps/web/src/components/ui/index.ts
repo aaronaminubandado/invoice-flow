@@ -12,3 +12,4 @@ export { Skeleton, CardSkeleton, TableRowSkeleton, InvoiceCardSkeleton } from '.
 export { ExportDropdown } from './export-dropdown'
 export { Tooltip } from './tooltip'
 export { ClientSearchCombobox } from './client-search-combobox'
+export { ProductSearchCombobox } from './product-search-combobox'

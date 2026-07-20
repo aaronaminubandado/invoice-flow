@@ -27,6 +27,7 @@ import {
   ExportDropdown,
   Tooltip,
   ClientSearchCombobox,
+  ProductSearchCombobox,
 } from '@/components/ui'
 import { useToast } from '@/hooks/useToast'
 import { useSettings } from '@/hooks/useSettings'
@@ -34,7 +35,7 @@ import { getErrorMessage } from '@/lib/axios'
 import { formatCurrency } from '@/lib/utils'
 import { downloadBlob, FILE_EXTENSIONS } from '@/lib/download'
 import { invoiceItemsTotal, lineItemTotal } from '@/lib/invoice-items'
-import { invoicesApi, clientsApi } from '@/services'
+import { invoicesApi, clientsApi, productsApi } from '@/services'
 import type { ExportFormat } from '@/lib/download'
 import {
   Invoice,
@@ -533,6 +534,12 @@ function CreateInvoiceForm({
     unit_price: 0,
   })
 
+  const { data: productsPage } = useQuery({
+    queryKey: ['products', 'options'],
+    queryFn: () => productsApi.list({ limit: 200 }),
+  })
+  const productOptions = productsPage?.items ?? []
+
   const [clientId, setClientId] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [description, setDescription] = useState('')
@@ -553,7 +560,18 @@ function CreateInvoiceForm({
       client_id: clientId,
       due_date: dueDate,
       description: description || undefined,
-      items: items.filter((i) => i.description.trim()),
+      items: items
+        .filter(
+          (i) =>
+            (i.description.trim() || i.product_id) &&
+            lineTotal(i) > 0
+        )
+        .map((i) => ({
+          description: i.description,
+          quantity: Number(i.quantity),
+          unit_price: Number(i.unit_price),
+          product_id: i.product_id,
+        })),
       send_now: sendNow,
     })
   }
@@ -566,7 +584,9 @@ function CreateInvoiceForm({
   const isValid =
     clientId &&
     dueDate &&
-    items.some((i) => i.description.trim() && lineTotal(i) > 0)
+    items.some(
+      (i) => (i.description.trim() || i.product_id) && lineTotal(i) > 0
+    )
 
   return (
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -593,7 +613,21 @@ function CreateInvoiceForm({
           </div>
           {items.map((item, index) => (
             <div key={index} className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-5">
+              <div className="col-span-5 space-y-1.5">
+                <ProductSearchCombobox
+                  value={item.product_id}
+                  initialProducts={productOptions}
+                  onSelect={(product) => {
+                    const next = [...items]
+                    next[index] = {
+                      ...item,
+                      product_id: product.id,
+                      description: product.name,
+                      unit_price: Number(product.unit_price),
+                    }
+                    setItems(next)
+                  }}
+                />
                 <Input
                   placeholder="Description"
                   value={item.description}
