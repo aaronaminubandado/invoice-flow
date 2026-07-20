@@ -36,6 +36,11 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage,
   }))
 )
+const ProductsPage = lazy(() =>
+  import('@/pages/products/products').then((module) => ({
+    default: module.ProductsPage,
+  }))
+)
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -153,6 +158,14 @@ function App() {
                   element={
                     <Suspense fallback={<RouteFallback />}>
                       <ClientsPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/products"
+                  element={
+                    <Suspense fallback={<RouteFallback />}>
+                      <ProductsPage />
                     </Suspense>
                   }
                 />

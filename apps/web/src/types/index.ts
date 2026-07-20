@@ -20,6 +20,7 @@ export interface InvoiceItem {
   quantity: number | string
   unit_price: number | string
   line_total?: number | string
+  product_id?: string
 }
 
 export interface Invoice {
@@ -82,6 +83,40 @@ export interface CreateInvoiceItemInput {
   description: string
   quantity: number
   unit_price: number
+  product_id?: string
+}
+
+export interface ProductCategory {
+  id: string
+  name: string
+  description?: string
+  created_at: string
+}
+
+export interface Product {
+  id: string
+  name: string
+  sku?: string
+  description?: string
+  unit_price: string
+  category_id?: string
+  category_name?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateProductCategoryInput {
+  name: string
+  description?: string
+}
+
+export interface CreateProductInput {
+  name: string
+  sku?: string
+  description?: string
+  unit_price: number
+  category_id?: string
 }
 
 export interface CreateInvoiceInput {
